@@ -1,0 +1,8 @@
+[
+  {"claves":["pecho","infarto","desmayo","inconsciente","opresion"],"severidad":"Rojo","esi":1,"prioridad":10,"especialidad":"Cardiología","hallazgo":"Signos de alarma cardiovascular (ESI 1, referencia MTS/ESI)"},
+  {"claves":["respirar","disnea","ahogo","fiebre alta","38"],"severidad":"Naranja","esi":2,"prioridad":8,"especialidad":"Neumología","hallazgo":"Compromiso respiratorio o fiebre alta (ESI 2)"},
+  {"claves":["cabeza","cefalea","mareo","neurolog"],"severidad":"Amarillo","esi":3,"prioridad":6,"especialidad":"Neurología","hallazgo":"Síntomas neurológicos a valorar (ESI 3)"},
+  {"claves":["garganta","amigdal","tragar","faring"],"severidad":"Verde","esi":4,"prioridad":4,"especialidad":"Otorrinolaringología","hallazgo":"Cuadro faríngeo frecuente (ESI 4)"},
+  {"claves":["piel","mancha","lesion","picazon","roncha","acne","morado"],"severidad":"Verde","esi":4,"prioridad":3,"especialidad":"Dermatología","hallazgo":"Afección cutánea (referencia tipo HAM10000/PAD-UFES)"},
+  {"claves":["gripe","resfriado","tos","estornudo"],"severidad":"Azul","esi":5,"prioridad":2,"especialidad":"Medicina General","hallazgo":"Infección respiratoria leve probable (ESI 5)"}
+]

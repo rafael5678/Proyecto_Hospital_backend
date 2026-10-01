@@ -1,0 +1,6 @@
+[
+  {"claves":["asimetria","asimetr","sangra","ulcera","cambia de color","borde irregular"],"riesgo":"ALTO","score":0.78,"dx":["Lesión pigmentada a biopsia","Melanoma en diagnóstico diferencial","Carcinoma"],"car":"Regla ABCD / etiquetas tipo HAM10000 nv-mel-bcc"},
+  {"claves":["roncha","urticaria","picazon","pica"],"riesgo":"MEDIO","score":0.42,"dx":["Urticaria","Dermatitis atópica","Reacción medicamentosa"],"car":"Patrón pruriginoso (PAD-UFES / Derm7pt)"},
+  {"claves":["grano","acne","pustula"],"riesgo":"BAJO","score":0.22,"dx":["Acné vulgar","Foliculitis"],"car":"Lesión inflamatoria superficial"},
+  {"claves":["morado","moreton","hematoma"],"riesgo":"MEDIO","score":0.35,"dx":["Equimosis","Vasculitis a descartar","Púrpura"],"car":"Cambio de coloración; correlacionar trauma o plaquetas"}
+]

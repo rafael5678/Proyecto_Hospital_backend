@@ -1,0 +1,5 @@
+[
+  {"med":["warfarina","sintrom"],"dieta":["verdura","espinaca","brocoli","vitamina k"],"elementos":"Warfarina + vitamina K","tipo":"FARMACO_ALIMENTO","severidad":"GRAVE","mecanismo":"Antagonismo vitamina K (DrugBank/FOODB)","consecuencia":"Pérdida de efecto anticoagulante","accion":"Porción diaria constante e INR"},
+  {"med":["atorvasta","simvasta","estatina"],"dieta":["toronja","pomelo"],"elementos":"Estatina + toronja","tipo":"FARMACO_ALIMENTO","severidad":"MODERADA","mecanismo":"Inhibición CYP3A4","consecuencia":"Más exposición y riesgo muscular","accion":"Evitar toronja"},
+  {"med":["ciprofloxacino","tetraciclina"],"dieta":["leche","lacteo","queso","yogurt","calcio"],"elementos":"Antibiótico + lácteos","tipo":"FARMACO_ALIMENTO","severidad":"MODERADA","mecanismo":"Quelación con calcio","consecuencia":"Menos absorción","accion":"Separar 2-4 horas"}
+]

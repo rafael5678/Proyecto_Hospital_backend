@@ -1,0 +1,7 @@
+# Hospy Backend
+
+Spring Boot + Docker. Health: /api/health
+
+En Render (Web Service, Dockerfile) configura:
+SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD,
+JWT_SECRET, JWT_EXPIRATION=86400000, CORS_ORIGINS, SPRING_PROFILES_ACTIVE=prod
