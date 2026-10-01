@@ -47,6 +47,11 @@ public class AdminController {
         return ResponseEntity.ok(new ApiMessage("Usuario desactivado"));
     }
 
+    @PatchMapping("/usuarios/{id}/estado")
+    public ResponseEntity<UsuarioDTO> cambiarEstado(@PathVariable Long id, @RequestParam boolean activo) {
+        return ResponseEntity.ok(usuarioService.cambiarEstado(id, activo));
+    }
+
     @PostMapping("/medicos")
     public ResponseEntity<UsuarioDTO> crearMedico(@Valid @RequestBody UsuarioRequest request) {
         request.setRol("MEDICO");
@@ -55,7 +60,7 @@ public class AdminController {
 
     @GetMapping("/medicos")
     public ResponseEntity<List<UsuarioDTO>> listarMedicos() {
-        return ResponseEntity.ok(usuarioService.listarMedicos());
+        return ResponseEntity.ok(usuarioService.listarTodosLosMedicos());
     }
 
     @PutMapping("/medicos/{id}")

@@ -82,12 +82,22 @@ public class UsuarioService {
     }
 
     public void eliminar(Long id) {
+        cambiarEstado(id, false);
+    }
+
+    @Transactional
+    public UsuarioDTO cambiarEstado(Long id, boolean activo) {
         Usuario usuario = buscar(id);
         if (usuario.getRol() == Rol.ADMIN) {
             throw new RuntimeException("El administrador único no se puede desactivar.");
         }
-        usuario.setActivo(false);
+        usuario.setActivo(activo);
         usuarioRepository.save(usuario);
+        return toDtoByRol(usuario);
+    }
+
+    public List<UsuarioDTO> listarTodosLosMedicos() {
+        return medicoRepository.findAll().stream().map(UsuarioMapper::fromMedico).toList();
     }
 
     public Usuario buscar(Long id) {
