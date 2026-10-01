@@ -1,0 +1,1159 @@
+[
+  {
+    "claves": [
+      "chronic",
+      "urethral",
+      "obstruction",
+      "benign",
+      "prismatic",
+      "hyperplasia"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Anatomy"
+  },
+  {
+    "claves": [
+      "vitamin",
+      "supplied",
+      "only",
+      "animal",
+      "source",
+      "biochemistry"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Biochemistry"
+  },
+  {
+    "claves": [
+      "surgical",
+      "options",
+      "morbid",
+      "obesity",
+      "except",
+      "surgery"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Surgery"
+  },
+  {
+    "claves": [
+      "endaerectomy",
+      "right",
+      "common",
+      "carotid",
+      "found",
+      "blind"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Ophthalmology"
+  },
+  {
+    "claves": [
+      "growth",
+      "hormone",
+      "effect",
+      "through",
+      "physiology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Physiology"
+  },
+  {
+    "claves": [
+      "scrub",
+      "typhus",
+      "transmitted",
+      "september",
+      "social",
+      "preventive"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Social & Preventive Medicine"
+  },
+  {
+    "claves": [
+      "abnormal",
+      "vascular",
+      "patterns",
+      "seen",
+      "colposcopy",
+      "case"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Ginecología",
+    "hallazgo": "MedMCQA/MedQA · Gynaecology & Obstetrics"
+  },
+  {
+    "claves": [
+      "rectum",
+      "examination",
+      "useful",
+      "test",
+      "diagnosis",
+      "surgery"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Surgery"
+  },
+  {
+    "claves": [
+      "characteristics",
+      "remifentanyl",
+      "metabolised",
+      "plasma",
+      "esteraseb",
+      "short"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Anaesthesia"
+  },
+  {
+    "claves": [
+      "naglers",
+      "reaction",
+      "shown",
+      "microbiology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Microbiology"
+  },
+  {
+    "claves": [
+      "statements",
+      "true",
+      "false",
+      "hirsutism",
+      "defined",
+      "androgen"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Medicine"
+  },
+  {
+    "claves": [
+      "pharmakokinetic",
+      "change",
+      "occurring",
+      "geriatric",
+      "anatomy"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Anatomy"
+  },
+  {
+    "claves": [
+      "true",
+      "regarding",
+      "phase",
+      "microbiology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Microbiology"
+  },
+  {
+    "claves": [
+      "chronic",
+      "smoker",
+      "presents",
+      "painless",
+      "gross",
+      "hematuria"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Surgery"
+  },
+  {
+    "claves": [
+      "receptors",
+      "theophylline",
+      "antagonistic",
+      "interaction",
+      "pharmacology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Pharmacology"
+  },
+  {
+    "claves": [
+      "hyper",
+      "viscosity",
+      "seen",
+      "anatomy"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Anatomy"
+  },
+  {
+    "claves": [
+      "positively",
+      "skewed",
+      "curve",
+      "measure",
+      "central",
+      "tendency"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Social & Preventive Medicine"
+  },
+  {
+    "claves": [
+      "process",
+      "hardening",
+      "cement",
+      "matrix",
+      "through",
+      "hydration"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Dental"
+  },
+  {
+    "claves": [
+      "superior",
+      "vena",
+      "cava",
+      "derived",
+      "anatomy"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Anatomy"
+  },
+  {
+    "claves": [
+      "testicular",
+      "artery",
+      "usually",
+      "arises",
+      "surgery"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Surgery"
+  },
+  {
+    "claves": [
+      "position",
+      "vocal",
+      "cord",
+      "cadaver"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · ENT"
+  },
+  {
+    "claves": [
+      "organisms",
+      "been",
+      "cultured",
+      "successfully",
+      "microbiology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Microbiology"
+  },
+  {
+    "claves": [
+      "normal",
+      "waist",
+      "ratio",
+      "female",
+      "below",
+      "social"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Social & Preventive Medicine"
+  },
+  {
+    "claves": [
+      "common",
+      "cause",
+      "renal",
+      "scaring",
+      "year",
+      "child"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Medicine"
+  },
+  {
+    "claves": [
+      "hours",
+      "snake",
+      "bite",
+      "comes",
+      "emergency",
+      "mild"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Forensic Medicine"
+  },
+  {
+    "claves": [
+      "agents",
+      "commonly",
+      "associated",
+      "recurrent",
+      "meningitis",
+      "leaks"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Pediatría",
+    "hallazgo": "MedMCQA/MedQA · Pediatrics"
+  },
+  {
+    "claves": [
+      "treatment",
+      "choice",
+      "traumatic",
+      "facial",
+      "nerve",
+      "injury"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · ENT"
+  },
+  {
+    "claves": [
+      "best",
+      "method",
+      "informing",
+      "rural",
+      "population",
+      "about"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Social & Preventive Medicine"
+  },
+  {
+    "claves": [
+      "lymph",
+      "vessel",
+      "drain",
+      "posterior",
+      "tongue",
+      "anatomy"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Anatomy"
+  },
+  {
+    "claves": [
+      "risk",
+      "factors",
+      "associated",
+      "post",
+      "operative",
+      "nausea"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Anaesthesia"
+  },
+  {
+    "claves": [
+      "true",
+      "about",
+      "acute",
+      "osteomyelitis",
+      "except",
+      "orthopaedics"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Orthopaedics"
+  },
+  {
+    "claves": [
+      "anterolateral",
+      "ahroscopy",
+      "knee",
+      "orthopaedics"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Orthopaedics"
+  },
+  {
+    "claves": [
+      "regarding",
+      "vaginal",
+      "candidiasis",
+      "false",
+      "gynaecology",
+      "obstetrics"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Ginecología",
+    "hallazgo": "MedMCQA/MedQA · Gynaecology & Obstetrics"
+  },
+  {
+    "claves": [
+      "year",
+      "suspected",
+      "have",
+      "pneumoperitoneum",
+      "unable",
+      "stand"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Radiology"
+  },
+  {
+    "claves": [
+      "probable",
+      "poal",
+      "entry",
+      "aspergillus",
+      "microbiology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Microbiology"
+  },
+  {
+    "claves": [
+      "management",
+      "antenatal",
+      "period",
+      "includes",
+      "pediatrics"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Pediatría",
+    "hallazgo": "MedMCQA/MedQA · Pediatrics"
+  },
+  {
+    "claves": [
+      "change",
+      "will",
+      "seen",
+      "vertebral",
+      "column",
+      "ochronosis"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Orthopaedics"
+  },
+  {
+    "claves": [
+      "solid",
+      "line",
+      "represent",
+      "rigid",
+      "height",
+      "then"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Dental"
+  },
+  {
+    "claves": [
+      "pearsonian",
+      "measure",
+      "skewness",
+      "social",
+      "preventive",
+      "medicine"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Social & Preventive Medicine"
+  },
+  {
+    "claves": [
+      "causes",
+      "sudden",
+      "loss",
+      "vision",
+      "except",
+      "ophthalmology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Oftalmología",
+    "hallazgo": "MedMCQA/MedQA · Ophthalmology"
+  },
+  {
+    "claves": [
+      "features",
+      "lymph",
+      "node",
+      "histology",
+      "except",
+      "anatomy"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Anatomy"
+  },
+  {
+    "claves": [
+      "during",
+      "meningioma",
+      "left",
+      "paracentral",
+      "lobule",
+      "injured"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Anatomy"
+  },
+  {
+    "claves": [
+      "bacterial",
+      "meningitis",
+      "associated",
+      "sudural",
+      "effusion",
+      "surgery"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Surgery"
+  },
+  {
+    "claves": [
+      "statements",
+      "true",
+      "regarding",
+      "hyperophy",
+      "except",
+      "pathology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Pathology"
+  },
+  {
+    "claves": [
+      "glucose",
+      "sympo",
+      "occurs",
+      "physiology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Physiology"
+  },
+  {
+    "claves": [
+      "true",
+      "about",
+      "temporal",
+      "arteritis",
+      "except",
+      "medicine"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Medicine"
+  },
+  {
+    "claves": [
+      "various",
+      "modalities",
+      "used",
+      "treatment",
+      "threatening",
+      "effects"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Medicine"
+  },
+  {
+    "claves": [
+      "chronic",
+      "alcoholism",
+      "rate",
+      "limiting",
+      "component",
+      "alcohol"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Biochemistry"
+  },
+  {
+    "claves": [
+      "minimum",
+      "level",
+      "iodine",
+      "iodized",
+      "salt",
+      "reaching"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Social & Preventive Medicine"
+  },
+  {
+    "claves": [
+      "true",
+      "statement",
+      "regarding",
+      "specific",
+      "death",
+      "rates"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Social & Preventive Medicine"
+  },
+  {
+    "claves": [
+      "exposure",
+      "prophylaxis",
+      "rabies",
+      "given",
+      "days",
+      "social"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Social & Preventive Medicine"
+  },
+  {
+    "claves": [
+      "regarding",
+      "sjogren",
+      "syndrome",
+      "true",
+      "except",
+      "september"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Oftalmología",
+    "hallazgo": "MedMCQA/MedQA · Ophthalmology"
+  },
+  {
+    "claves": [
+      "best",
+      "indicator",
+      "antemoum",
+      "drowning",
+      "forensic",
+      "medicine"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Forensic Medicine"
+  },
+  {
+    "claves": [
+      "splenomegaly",
+      "feature",
+      "march",
+      "pathology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Pathology"
+  },
+  {
+    "claves": [
+      "inhibitors",
+      "except",
+      "pharmacology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Pharmacology"
+  },
+  {
+    "claves": [
+      "true",
+      "case",
+      "control",
+      "studies",
+      "social",
+      "preventive"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Social & Preventive Medicine"
+  },
+  {
+    "claves": [
+      "could",
+      "include",
+      "mechanism",
+      "function",
+      "oxigenases",
+      "except"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Biochemistry"
+  },
+  {
+    "claves": [
+      "according",
+      "recent",
+      "judgment",
+      "doctor",
+      "charged",
+      "medical"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Forensic Medicine"
+  },
+  {
+    "claves": [
+      "very",
+      "difficult",
+      "induce",
+      "antibody",
+      "microbiology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Microbiology"
+  },
+  {
+    "claves": [
+      "best",
+      "appreciated",
+      "medicine"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Medicine"
+  },
+  {
+    "claves": [
+      "position",
+      "limb",
+      "posterior",
+      "dislocation",
+      "orthopaedics"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Orthopaedics"
+  },
+  {
+    "claves": [
+      "drug",
+      "causing",
+      "malignant",
+      "hyperthermia",
+      "asked",
+      "twice"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Anaesthesia"
+  },
+  {
+    "claves": [
+      "household",
+      "insectiside",
+      "used",
+      "malaria",
+      "social",
+      "preventive"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Social & Preventive Medicine"
+  },
+  {
+    "claves": [
+      "false",
+      "about",
+      "obstructive",
+      "jaundice",
+      "anatomy"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Anatomy"
+  },
+  {
+    "claves": [
+      "structure",
+      "lies",
+      "outside",
+      "cavernous",
+      "sinus",
+      "except"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Anatomy"
+  },
+  {
+    "claves": [
+      "best",
+      "procedure",
+      "done",
+      "intrapaum",
+      "fetal",
+      "monitoring"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Ginecología",
+    "hallazgo": "MedMCQA/MedQA · Gynaecology & Obstetrics"
+  },
+  {
+    "claves": [
+      "measured",
+      "device",
+      "bellow",
+      "spirometer",
+      "physiology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Physiology"
+  },
+  {
+    "claves": [
+      "newly",
+      "emerging",
+      "food",
+      "poisoning",
+      "organism",
+      "microbiology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Microbiology"
+  },
+  {
+    "claves": [
+      "atherosclerosis",
+      "initiation",
+      "fibroblast",
+      "plaque",
+      "mediated",
+      "injury"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Pathology"
+  },
+  {
+    "claves": [
+      "considered",
+      "second",
+      "line",
+      "defence",
+      "physiology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Physiology"
+  },
+  {
+    "claves": [
+      "mark",
+      "true",
+      "statement",
+      "regarding",
+      "lithium",
+      "maniac"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Psiquiatría",
+    "hallazgo": "MedMCQA/MedQA · Pharmacology"
+  },
+  {
+    "claves": [
+      "determination",
+      "pulp",
+      "vitality",
+      "pulse",
+      "oximeter",
+      "based"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Dental"
+  },
+  {
+    "claves": [
+      "isograft",
+      "indicates",
+      "transfer",
+      "tissues",
+      "between",
+      "surgery"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Surgery"
+  },
+  {
+    "claves": [
+      "causes",
+      "congenital",
+      "blindness",
+      "except",
+      "pediatrics"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Pediatría",
+    "hallazgo": "MedMCQA/MedQA · Pediatrics"
+  },
+  {
+    "claves": [
+      "hypersecretory",
+      "glaucoma",
+      "seen",
+      "ophthalmology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Oftalmología",
+    "hallazgo": "MedMCQA/MedQA · Ophthalmology"
+  },
+  {
+    "claves": [
+      "year",
+      "girl",
+      "presents",
+      "quadriparesis",
+      "facial",
+      "palsy"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Medicine"
+  },
+  {
+    "claves": [
+      "true",
+      "statement",
+      "regarding",
+      "human",
+      "ophthalmology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Ophthalmology"
+  },
+  {
+    "claves": [
+      "muscle",
+      "hybrid",
+      "surgery"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Surgery"
+  },
+  {
+    "claves": [
+      "delayed",
+      "union",
+      "fracture",
+      "bone",
+      "follo",
+      "wing"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Otorrinolaringología",
+    "hallazgo": "MedMCQA/MedQA · Surgery"
+  },
+  {
+    "claves": [
+      "pressure",
+      "inspiration",
+      "physiology"
+    ],
+    "severidad": "Amarillo",
+    "esi": 3,
+    "prioridad": 5,
+    "especialidad": "Medicina General",
+    "hallazgo": "MedMCQA/MedQA · Physiology"
+  }
+]

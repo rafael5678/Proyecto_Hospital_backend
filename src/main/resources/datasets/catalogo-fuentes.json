@@ -1,0 +1,18 @@
+{
+  "usados": [
+    "MedMCQA (HF, Apache 2.0)",
+    "MedQA-USMLE muestra HF",
+    "ESI/MTS local",
+    "HAM10000 etiquetas",
+    "FooDB/DrugBank reglas locales"
+  ],
+  "no_descargados": [
+    "MIMIC-IV-ED (PhysioNet DUA)",
+    "DrugBank completo (licencia académica)",
+    "ISIC/SLICE-3D imágenes (cientos de miles)",
+    "HAM10000 imágenes (no comercial, Dataverse)",
+    "DermNet NZ (copyright)",
+    "DisGeNET completo (plan de pago)"
+  ],
+  "spark": "pyspark local[*] si está instalado; si no, el mismo mapa en Python"
+}

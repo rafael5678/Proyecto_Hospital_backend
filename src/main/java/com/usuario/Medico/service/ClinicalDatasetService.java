@@ -22,14 +22,29 @@ public class ClinicalDatasetService {
         String texto = (nvl(req.getSintomas()) + " " + nvl(req.getDuracion()) + " " + nvl(req.getAntecedentes()))
                 .toLowerCase(Locale.ROOT);
         JsonNode filas = leer("datasets/triage-esi-mts.json");
+        JsonNode extra = leer("datasets/triage-medqa-medmcqa.json");
         String sev = "Verde";
         int esi = 4;
         int prio = 4;
         String esp = "Medicina General";
         List<String> hallazgos = new ArrayList<>();
-        hallazgos.add("Inferencia sobre dataset local ESI/MTS (reglas clínicas de referencia).");
+        hallazgos.add("ESI/MTS local + muestra MedMCQA/MedQA (Hugging Face, procesada).");
+        boolean hit = false;
         if (filas != null) {
             for (JsonNode fila : filas) {
+                if (contieneAlguna(texto, fila.get("claves"))) {
+                    sev = fila.path("severidad").asText(sev);
+                    esi = fila.path("esi").asInt(esi);
+                    prio = fila.path("prioridad").asInt(prio);
+                    esp = fila.path("especialidad").asText(esp);
+                    hallazgos.add(fila.path("hallazgo").asText());
+                    hit = true;
+                    break;
+                }
+            }
+        }
+        if (!hit && extra != null) {
+            for (JsonNode fila : extra) {
                 if (contieneAlguna(texto, fila.get("claves"))) {
                     sev = fila.path("severidad").asText(sev);
                     esi = fila.path("esi").asInt(esi);
@@ -41,7 +56,7 @@ public class ClinicalDatasetService {
             }
         }
         return AiTriageResponse.builder()
-                .severidad(sev).escala("ESI/MTS dataset local").nivelEsi(esi)
+                .severidad(sev).escala("ESI/MTS + MedMCQA/MedQA").nivelEsi(esi)
                 .especialidadRecomendada(esp).prioridad(prio).hallazgos(hallazgos)
                 .recomendaciones("Orientación automática con dataset ESI/MTS. No sustituye urgencias ni consulta médica.")
                 .resumen("Severidad " + sev + " (prioridad " + prio + "/10) hacia " + esp + ".")

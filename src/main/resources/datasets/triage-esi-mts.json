@@ -1,8 +1,13 @@
 [
-  {"claves":["pecho","infarto","desmayo","inconsciente","opresion"],"severidad":"Rojo","esi":1,"prioridad":10,"especialidad":"Cardiología","hallazgo":"Signos de alarma cardiovascular (ESI 1, referencia MTS/ESI)"},
-  {"claves":["respirar","disnea","ahogo","fiebre alta","38"],"severidad":"Naranja","esi":2,"prioridad":8,"especialidad":"Neumología","hallazgo":"Compromiso respiratorio o fiebre alta (ESI 2)"},
-  {"claves":["cabeza","cefalea","mareo","neurolog"],"severidad":"Amarillo","esi":3,"prioridad":6,"especialidad":"Neurología","hallazgo":"Síntomas neurológicos a valorar (ESI 3)"},
-  {"claves":["garganta","amigdal","tragar","faring"],"severidad":"Verde","esi":4,"prioridad":4,"especialidad":"Otorrinolaringología","hallazgo":"Cuadro faríngeo frecuente (ESI 4)"},
-  {"claves":["piel","mancha","lesion","picazon","roncha","acne","morado"],"severidad":"Verde","esi":4,"prioridad":3,"especialidad":"Dermatología","hallazgo":"Afección cutánea (referencia tipo HAM10000/PAD-UFES)"},
-  {"claves":["gripe","resfriado","tos","estornudo"],"severidad":"Azul","esi":5,"prioridad":2,"especialidad":"Medicina General","hallazgo":"Infección respiratoria leve probable (ESI 5)"}
+  {"claves":["pecho","infarto","desmayo","inconsciente","opresion","taquicardia"],"severidad":"Rojo","esi":1,"prioridad":10,"especialidad":"Cardiología","hallazgo":"Alarma cardiovascular ESI 1 (MTS/ESI + MedQA cardio)"},
+  {"claves":["respirar","disnea","ahogo","fiebre alta","cianosis"],"severidad":"Naranja","esi":2,"prioridad":8,"especialidad":"Neumología","hallazgo":"Compromiso respiratorio ESI 2"},
+  {"claves":["cabeza","cefalea","mareo","convulsion","vision doble"],"severidad":"Amarillo","esi":3,"prioridad":6,"especialidad":"Neurología","hallazgo":"Síntomas neurológicos ESI 3"},
+  {"claves":["garganta","amigdal","tragar","faring","hinchazon"],"severidad":"Verde","esi":4,"prioridad":4,"especialidad":"Otorrinolaringología","hallazgo":"Cuadro faríngeo ESI 4 (SympTEMIST-like)"},
+  {"claves":["piel","mancha","lesion","picazon","roncha","acne","morado","urticaria"],"severidad":"Verde","esi":4,"prioridad":3,"especialidad":"Dermatología","hallazgo":"Cutáneo HAM10000/PAD-UFES"},
+  {"claves":["abdomen","vomito","diarrea","estrenimiento"],"severidad":"Amarillo","esi":3,"prioridad":5,"especialidad":"Gastroenterología","hallazgo":"Síntomas digestivos"},
+  {"claves":["orina","disuria","cistitis","renal"],"severidad":"Verde","esi":4,"prioridad":4,"especialidad":"Urología","hallazgo":"Síntomas urinarios"},
+  {"claves":["embarazo","sangrado vaginal","gineco"],"severidad":"Naranja","esi":2,"prioridad":8,"especialidad":"Ginecología","hallazgo":"Alarma gineco-obstétrica"},
+  {"claves":["azucar","diabetes","sed","poliuria"],"severidad":"Amarillo","esi":3,"prioridad":5,"especialidad":"Endocrinología","hallazgo":"Metabólico / diabetes"},
+  {"claves":["ansiedad","insomnio","depresion"],"severidad":"Verde","esi":4,"prioridad":3,"especialidad":"Psiquiatría","hallazgo":"Salud mental"},
+  {"claves":["gripe","resfriado","tos","estornudo"],"severidad":"Azul","esi":5,"prioridad":2,"especialidad":"Medicina General","hallazgo":"Infección viral leve ESI 5"}
 ]
