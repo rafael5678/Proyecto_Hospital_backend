@@ -1,4 +1,12 @@
 [
+  {"claves":["celulitis","cellulitis","piel caliente y roja","eritema caliente"],"riesgo":"ALTO","score":0.8,"dx":["Celulitis bacteriana","Infección de tejidos blandos"],"car":"Clase BA-cellulitis del dataset de entrenamiento"},
+  {"claves":["culebrilla","herpes zoster","herpes zóster","shingles","banda dolorosa"],"riesgo":"ALTO","score":0.8,"dx":["Herpes zóster","Neuralgia herpética a prevenir"],"car":"Clase VI-shingles del dataset de entrenamiento"},
+  {"claves":["varicela","chickenpox","puntos con costras diseminados"],"riesgo":"MEDIO","score":0.5,"dx":["Varicela","Otras virosis exantemáticas"],"car":"Clase VI-chickenpox del dataset de entrenamiento"},
+  {"claves":["impetigo","impétigo","costra miel"],"riesgo":"MEDIO","score":0.48,"dx":["Impétigo","Piodermitis"],"car":"Clase BA-impetigo del dataset de entrenamiento"},
+  {"claves":["tiña","ringworm","anillo en la piel"],"riesgo":"MEDIO","score":0.45,"dx":["Tiña","Dermatofitosis"],"car":"Clase FU-ringworm del dataset de entrenamiento"},
+  {"claves":["larva migrans","larva","surco serpiginoso"],"riesgo":"MEDIO","score":0.5,"dx":["Larva migrans cutánea"],"car":"Clase PA-cutaneous-larva-migrans del dataset de entrenamiento"},
+  {"claves":["pie de atleta","athlete foot","picor entre dedos"],"riesgo":"BAJO","score":0.28,"dx":["Pie de atleta","Tinea pedis"],"car":"Clase FU-athlete-foot del dataset de entrenamiento"},
+  {"claves":["hongo de uña","uña gruesa","onicomicosis","nail fungus"],"riesgo":"BAJO","score":0.26,"dx":["Onicomicosis","Distrofia ungueal"],"car":"Clase FU-nail-fungus del dataset de entrenamiento"},
   {"claves":["asimetria","asimetr","sangra","ulcera","cambia de color","borde irregular"],"riesgo":"ALTO","score":0.78,"dx":["Lesión pigmentada a biopsia","Melanoma en diagnóstico diferencial","Carcinoma"],"car":"Regla ABCD / etiquetas tipo HAM10000 nv-mel-bcc"},
   {"claves":["roncha","urticaria","picazon","pica"],"riesgo":"MEDIO","score":0.42,"dx":["Urticaria","Dermatitis atópica","Reacción medicamentosa"],"car":"Patrón pruriginoso (PAD-UFES / Derm7pt)"},
   {"claves":["grano","acne","pustula"],"riesgo":"BAJO","score":0.22,"dx":["Acné vulgar","Foliculitis"],"car":"Lesión inflamatoria superficial"},

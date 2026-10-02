@@ -202,8 +202,18 @@ public class AiService {
                 .build();
     }
 
-    /* ============ 2. Dermatología (CNN simulado) ============== */
+    /* ============ 2. Dermatología (modelo de imagen + texto) ============== */
     public AiDermatologiaResponse dermatologia(AiDermatologiaRequest req) {
+        boolean hayImg = req.getImagenBase64() != null && !req.getImagenBase64().isBlank();
+        boolean hayTxt = req.getDescripcion() != null && !req.getDescripcion().isBlank();
+        if (!hayImg && !hayTxt) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Describe la lesión o sube una foto de evidencia.");
+        }
+        if (hayImg) {
+            return datasets.dermatologia(req);
+        }
         final String system = """
                 Eres un asistente de lenguaje que organiza una descripción textual de una lesión para revisión profesional.
                 No procesas imágenes, no eres una CNN y no debes afirmar características visuales no descritas por el usuario.
@@ -212,10 +222,9 @@ public class AiService {
                  "diagnosticosDiferenciales":["d1","d2"],"caracteristicasObservadas":["c1","c2"],
                  "recomendaciones":"...","advertencia":"no sustituye dermatólogo"}
                 """;
-        String user = "Descripción paciente: " + req.getDescripcion() +
+        String user = "Descripción paciente: " + nvl(req.getDescripcion()) +
                 " | Evolución: " + nvl(req.getTiempoEvolucion()) +
-                " | Síntomas asociados: " + nvl(req.getSintomasAsociados()) +
-                " | ImagenBase64 presente?: " + (req.getImagenBase64() != null && !req.getImagenBase64().isBlank());
+                " | Síntomas asociados: " + nvl(req.getSintomasAsociados());
 
         Optional<String> llm = llamarLlm(system, user);
         if (llm.isEmpty()) return datasets.dermatologia(req);
@@ -229,7 +238,7 @@ public class AiService {
     }
 
     private AiDermatologiaResponse dermatologiaMock(AiDermatologiaRequest req) {
-        String desc = req.getDescripcion().toLowerCase();
+        String desc = nvl(req.getDescripcion()).toLowerCase();
         String riesgo = "BAJO";
         double score = 0.18;
         List<String> dd = List.of("Dermatitis alérgica", "Picadura de insecto");

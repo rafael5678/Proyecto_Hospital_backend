@@ -3,3 +3,6 @@ target/
 *.iml
 **/application-local.properties
 .env
+spark/.venv/
+spark/__pycache__/
+src/main/resources/datasets/skin-features.npz

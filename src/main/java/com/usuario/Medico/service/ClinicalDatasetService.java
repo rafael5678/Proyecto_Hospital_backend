@@ -17,6 +17,11 @@ import java.util.Locale;
 public class ClinicalDatasetService {
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final SkinImageClassifier skinImageClassifier;
+
+    public ClinicalDatasetService(SkinImageClassifier skinImageClassifier) {
+        this.skinImageClassifier = skinImageClassifier;
+    }
 
     public AiTriageResponse triage(AiTriageRequest req) {
         String texto = (nvl(req.getSintomas()) + " " + nvl(req.getDuracion()) + " " + nvl(req.getAntecedentes()))
@@ -65,23 +70,55 @@ public class ClinicalDatasetService {
     }
 
     public AiDermatologiaResponse dermatologia(AiDermatologiaRequest req) {
-        String texto = nvl(req.getDescripcion()).toLowerCase(Locale.ROOT);
+        AiDermatologiaResponse porImagen = skinImageClassifier.clasificar(req.getImagenBase64());
+        String texto = (nvl(req.getDescripcion()) + " " + nvl(req.getSintomasAsociados())
+                + " " + nvl(req.getTiempoEvolucion())).toLowerCase(Locale.ROOT);
         JsonNode filas = leer("datasets/dermatologia-ham10000.json");
         String riesgo = "BAJO";
         double score = 0.2;
-        List<String> dx = List.of("Dermatitis inespecífica");
+        List<String> dx = new ArrayList<>(List.of("Dermatitis inespecífica"));
         List<String> car = new ArrayList<>();
-        car.add("Clasificación textual con etiquetas tipo HAM10000 / PAD-UFES (sin imagen).");
-        if (filas != null) {
+        boolean hitTexto = false;
+        if (filas != null && !texto.isBlank()) {
             for (JsonNode fila : filas) {
                 if (contieneAlguna(texto, fila.get("claves"))) {
                     riesgo = fila.path("riesgo").asText(riesgo);
                     score = fila.path("score").asDouble(score);
-                    dx = textos(fila.get("dx"));
+                    dx = new ArrayList<>(textos(fila.get("dx")));
                     car.add(fila.path("car").asText());
+                    hitTexto = true;
                     break;
                 }
             }
+        }
+        if (porImagen != null) {
+            List<String> mergedDx = new ArrayList<>(nvlList(porImagen.getDiagnosticosDiferenciales()));
+            if (hitTexto) {
+                for (String d : dx) {
+                    if (mergedDx.stream().noneMatch(x -> x.equalsIgnoreCase(d))) mergedDx.add(d);
+                }
+            }
+            List<String> mergedCar = new ArrayList<>(nvlList(porImagen.getCaracteristicasObservadas()));
+            mergedCar.addAll(car);
+            if (!nvl(req.getDescripcion()).isBlank()) {
+                mergedCar.add("También se tuvo en cuenta la descripción escrita del paciente.");
+            }
+            String nivel = peorRiesgo(porImagen.getNivelRiesgo(), riesgo);
+            double sc = Math.max(nvl(porImagen.getScoreRiesgo()), score);
+            return AiDermatologiaResponse.builder()
+                    .nivelRiesgo(nivel)
+                    .scoreRiesgo(sc)
+                    .diagnosticosDiferenciales(mergedDx)
+                    .caracteristicasObservadas(mergedCar)
+                    .recomendaciones(porImagen.getRecomendaciones())
+                    .advertencia(porImagen.getAdvertencia())
+                    .modoDemo(false)
+                    .build();
+        }
+        if (!car.isEmpty() || hitTexto) {
+            car.add(0, "Clasificación textual con etiquetas tipo HAM10000 / PAD-UFES (sin foto usable).");
+        } else {
+            car.add("Sin foto y sin coincidencia textual clara. Se sugiere Dermatología para inspección presencial.");
         }
         return AiDermatologiaResponse.builder()
                 .nivelRiesgo(riesgo).scoreRiesgo(score)
@@ -89,6 +126,31 @@ public class ClinicalDatasetService {
                 .recomendaciones("Correlacionar con examen físico. Dataset de lesiones pigmentadas de referencia educativa.")
                 .advertencia("No sustituye consulta con dermatólogo.")
                 .modoDemo(false).build();
+    }
+
+    private static String peorRiesgo(String a, String b) {
+        return rango(a) >= rango(b) ? nvl(a, "BAJO") : nvl(b, "BAJO");
+    }
+
+    private static int rango(String r) {
+        return switch (nvl(r).toUpperCase(Locale.ROOT)) {
+            case "CRITICO" -> 4;
+            case "ALTO" -> 3;
+            case "MEDIO" -> 2;
+            default -> 1;
+        };
+    }
+
+    private static List<String> nvlList(List<String> in) {
+        return in == null ? new ArrayList<>() : in;
+    }
+
+    private static Double nvl(Double v) {
+        return v == null ? 0.0 : v;
+    }
+
+    private static String nvl(String s, String def) {
+        return s == null || s.isBlank() ? def : s;
     }
 
     public AiInteraccionResponse interacciones(AiInteraccionRequest req) {

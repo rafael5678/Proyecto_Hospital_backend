@@ -4,6 +4,7 @@
     "MedQA-USMLE muestra HF",
     "ESI/MTS local",
     "HAM10000 etiquetas",
+    "Dataset local de 8 enfermedades de piel (train_set, ~925 fotos)",
     "FooDB/DrugBank reglas locales"
   ],
   "no_descargados": [
