@@ -59,3 +59,5 @@ public class Cita {
     private Double dermatologiaScoreRiesgo; /* 0.0 a 1.0 */
     private String dermatologiaTopDiagnostico; /* Diagnóstico principal sugerido */
 }
+
+// Mapeo JPA: Entidad central que vincula paciente, médico y evaluación de prioridad médica.
