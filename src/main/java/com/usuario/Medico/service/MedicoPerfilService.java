@@ -62,3 +62,5 @@ public class MedicoPerfilService {
                 .build();
     }
 }
+
+// Documentación de soporte MedicoPerfilService: Administra especialidades y datos profesionales de los facultativos.
