@@ -15,3 +15,5 @@ public class AuthResponse {
     private String email;
     private String rol;
 }
+
+// DTO Response: Contenedor del token JWT y metadatos de usuario tras login exitoso.
