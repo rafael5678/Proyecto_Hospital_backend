@@ -33,3 +33,5 @@ public class Paciente {
     private String telefonoEmergencia;
     private String observaciones;
 }
+
+// Mapeo JPA: Representa al usuario que solicita atención y registra antecedentes básicos.
