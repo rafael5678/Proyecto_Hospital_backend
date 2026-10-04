@@ -32,3 +32,5 @@ public class CitaResponse {
     private String dermatologiaTopDiagnostico;
     private String avisoAgenda;
 }
+
+// DTO Response: Estructura serializable enviada al cliente con detalles completos de la cita agendada.
