@@ -88,3 +88,5 @@ public class AuthService {
         return valor;
     }
 }
+
+// Documentación de soporte AuthService: Emite tokens JWT con claims de usuario y rol tras validación criptográfica.
