@@ -86,3 +86,5 @@ public class PacienteService {
                 .build();
     }
 }
+
+// Documentación de soporte PacienteService: Expone operaciones de consulta y actualización de historial para pacientes.
