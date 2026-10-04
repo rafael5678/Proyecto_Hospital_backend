@@ -11,3 +11,5 @@ Variables (panel Render, no en git):
 - CORS_ORIGINS=https://*.vercel.app,http://localhost:4200
 - SPRING_PROFILES_ACTIVE=prod
 - OPENAI_API_KEY (opcional; si falta, usa datasets y el clasificador de piel local)
+
+<!-- Documentación auditada y sincronizada para despliegue en producción -->
