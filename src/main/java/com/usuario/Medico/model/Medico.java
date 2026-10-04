@@ -28,3 +28,5 @@ public class Medico {
     private Integer anosExperiencia;
     private String biografia;
 }
+
+// Mapeo JPA: Representa el personal de salud con especialidad asignada y agenda vinculada.
