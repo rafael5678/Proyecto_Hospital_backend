@@ -466,3 +466,5 @@ public class AiService {
 
     private static String nvl(String s) { return s == null || s.isBlank() ? "no informado" : s; }
 }
+
+// Documentación de soporte AiService: Provee inferencia para categorización ESI y soporte a diagnóstico dermatológico.
