@@ -104,3 +104,5 @@ public class ReporteService {
         return nombres[mes];
     }
 }
+
+// Documentación de soporte ReporteService: Consolida métricas hospitalarias para paneles de control y supervisión.
