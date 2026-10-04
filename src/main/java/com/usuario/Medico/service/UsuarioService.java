@@ -136,3 +136,5 @@ public class UsuarioService {
         };
     }
 }
+
+// Documentación de soporte UsuarioService: Controla el ciclo de vida de cuentas y sincronización de roles.
