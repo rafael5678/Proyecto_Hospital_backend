@@ -34,3 +34,5 @@ public class Usuario {
     @Builder.Default
     private Boolean activo = true;
 }
+
+// Mapeo JPA: Entidad base de credenciales con soporte de soft-delete y flags de activación.
