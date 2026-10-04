@@ -30,3 +30,5 @@ public class CitaRequest {
     private Double dermatologiaScoreRiesgo;
     private String dermatologiaTopDiagnostico;
 }
+
+// DTO Request: Transporta los parámetros necesarios para agendar o solicitar una cita médica.
