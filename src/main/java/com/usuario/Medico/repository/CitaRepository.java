@@ -59,3 +59,5 @@ public interface CitaRepository extends JpaRepository<Cita, Long> {
                                                  @Param("fin") LocalDateTime fin,
                                                  @Param("estados") List<EstadoCita> estados);
 }
+
+// Repositorio JPA: Consultas derivadas para busqueda por paciente, medico y rango de fechas.
