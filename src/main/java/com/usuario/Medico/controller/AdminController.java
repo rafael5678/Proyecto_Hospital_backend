@@ -92,3 +92,5 @@ public class AdminController {
         return ResponseEntity.ok(reporteService.generarMetricasIA(aiService.hayApiKey()));
     }
 }
+
+// Documentación interna: Controlador administrativo para auditoría y actualización de cuentas activas.
