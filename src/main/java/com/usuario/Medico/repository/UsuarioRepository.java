@@ -13,3 +13,5 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     List<Usuario> findByRol(Rol rol);
     List<Usuario> findByRolAndActivoTrue(Rol rol);
 }
+
+// Repositorio JPA: Acceso directo a credenciales por correo electronico.
