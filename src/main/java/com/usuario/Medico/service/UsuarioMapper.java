@@ -51,3 +51,5 @@ public final class UsuarioMapper {
         return fromPaciente(p);
     }
 }
+
+// Componente Mapper: Conversion bidireccional entre Usuario y UsuarioDTO.
