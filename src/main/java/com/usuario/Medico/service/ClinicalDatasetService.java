@@ -226,3 +226,5 @@ public class ClinicalDatasetService {
 
     private static String nvl(String s) { return s == null ? "" : s; }
 }
+
+// Servicio de Datos Clinicos: Carga de datasets locales ESI y catalogos clinicos.
