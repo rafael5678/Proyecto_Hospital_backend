@@ -10,3 +10,5 @@ public interface HorarioRepository extends JpaRepository<Horario, Long> {
     List<Horario> findByMedicoAndDisponibleTrue(Medico medico);
     List<Horario> findByMedico(Medico medico);
 }
+
+// Repositorio JPA: Metodos de busqueda de bloques horarios activos por dia.
