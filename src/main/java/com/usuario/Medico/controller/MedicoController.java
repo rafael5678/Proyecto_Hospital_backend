@@ -28,3 +28,5 @@ public class MedicoController {
         return ResponseEntity.ok(horarioService.listarPorMedico(id));
     }
 }
+
+// Documentación interna: Provee metricas y citas asignadas para el facultativo.
