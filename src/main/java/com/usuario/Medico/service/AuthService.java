@@ -21,7 +21,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final PerfilService perfilService;
 
-    /** HU-01: Registro sin JWT — el paciente debe iniciar sesión después */
+    /** Public patient registration. Doctors and admins are created by the hospital admin. */
     @Transactional
     public void registrar(RegisterRequest req) {
         if (usuarioRepository.existsByEmail(req.getEmail())) {
@@ -39,7 +39,7 @@ public class AuthService {
         perfilService.crearPaciente(usuario, req);
     }
 
-    /** HU-02: Login con JWT */
+    /** Single login: the stored role decides which portal opens. */
     public AuthResponse login(AuthRequest req) {
         Usuario usuario = usuarioRepository.findByEmail(resolverEmailLogin(req.getEmail(), req.getRol()))
                 .orElseThrow(() -> new RuntimeException("Credenciales inválidas"));
@@ -88,5 +88,3 @@ public class AuthService {
         return valor;
     }
 }
-
-// Documentación de soporte AuthService: Emite tokens JWT con claims de usuario y rol tras validación criptográfica.
