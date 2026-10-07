@@ -1,5 +1,6 @@
 package com.usuario.Medico.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -22,6 +23,7 @@ public class Usuario {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @JsonIgnore
     @Column(nullable = false)
     private String password;
 
@@ -34,5 +36,3 @@ public class Usuario {
     @Builder.Default
     private Boolean activo = true;
 }
-
-// Mapeo JPA: Entidad base de credenciales con soporte de soft-delete y flags de activación.
