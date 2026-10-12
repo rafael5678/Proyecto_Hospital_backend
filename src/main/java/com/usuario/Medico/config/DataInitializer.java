@@ -10,6 +10,7 @@ import com.usuario.Medico.repository.MedicoRepository;
 import com.usuario.Medico.repository.PacienteRepository;
 import com.usuario.Medico.repository.UsuarioRepository;
 import com.usuario.Medico.service.HorarioService;
+import com.usuario.Medico.service.NotificacionInboxService;
 import com.usuario.Medico.service.PerfilService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
@@ -28,6 +29,7 @@ public class DataInitializer implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
     private final PerfilService perfilService;
     private final HorarioService horarioService;
+    private final NotificacionInboxService notificacionInboxService;
 
     @Override
     @Transactional
@@ -42,6 +44,7 @@ public class DataInitializer implements CommandLineRunner {
         medicoRepository.findAll().forEach(horarioService::asegurarHorarioLaboral);
         asegurarPacienteDemo("pedro@hospy.com", "Pedro Paciente", "123456");
         asegurarPacienteDemo("paciente@hospy.com", "Juan Reyes", "Paciente123");
+        notificacionInboxService.avisarAceptadasSinAviso();
     }
 
     private void asegurarPacienteDemo(String email, String nombre, String clave) {

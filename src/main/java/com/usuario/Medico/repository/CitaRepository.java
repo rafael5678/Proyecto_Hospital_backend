@@ -16,6 +16,7 @@ public interface CitaRepository extends JpaRepository<Cita, Long> {
     List<Cita> findByPacienteOrderByFechaHoraDesc(Paciente paciente);
     List<Cita> findByMedicoOrderByFechaHoraAsc(Medico medico);
     List<Cita> findAllByOrderByFechaHoraDesc();
+    List<Cita> findByEstado(EstadoCita estado);
 
     @Query("SELECT COUNT(c) FROM Cita c WHERE c.estado = :estado")
     long countByEstado(@Param("estado") EstadoCita estado);

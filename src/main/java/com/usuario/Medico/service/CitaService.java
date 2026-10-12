@@ -294,18 +294,24 @@ public class CitaService {
         return CitaMapper.toDto(citaRepository.save(cita));
     }
 
+    @Transactional
     public CitaResponse aceptar(Long id, String emailMedico) {
         Cita cita = buscar(id);
         validarMedico(cita, emailMedico);
         cita.setEstado(EstadoCita.ACEPTADA);
-        return CitaMapper.toDto(citaRepository.save(cita));
+        Cita guardada = citaRepository.save(cita);
+        notificacionCitaService.notificarCitaAceptada(guardada);
+        return CitaMapper.toDto(guardada);
     }
 
+    @Transactional
     public CitaResponse rechazar(Long id, String emailMedico) {
         Cita cita = buscar(id);
         validarMedico(cita, emailMedico);
         cita.setEstado(EstadoCita.RECHAZADA);
-        return CitaMapper.toDto(citaRepository.save(cita));
+        Cita guardada = citaRepository.save(cita);
+        notificacionCitaService.notificarCitaRechazada(guardada);
+        return CitaMapper.toDto(guardada);
     }
 
     public PacientePerfilDTO pacienteDeCita(Long citaId, String emailMedico) {

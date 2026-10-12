@@ -24,8 +24,12 @@ public class NotificacionCitaService {
     @Value("${app.mail.from:noreply@hospy.local}")
     private String from;
 
-    public NotificacionCitaService(ObjectProvider<JavaMailSender> senderProvider) {
+    private final NotificacionInboxService inbox;
+
+    public NotificacionCitaService(ObjectProvider<JavaMailSender> senderProvider,
+                                   NotificacionInboxService inbox) {
         this.senderProvider = senderProvider;
+        this.inbox = inbox;
     }
 
     public ResultadoNotificacion notificarCambio(Cita cita, LocalDateTime fechaAnterior, String motivo) {
@@ -39,6 +43,8 @@ public class NotificacionCitaService {
                 " cambió de " + FORMATO.format(fechaAnterior) + " a " + FORMATO.format(cita.getFechaHora()) +
                 ".\nMotivo administrativo: " + motivo;
 
+        inbox.crearParaEmail(cita.getPaciente().getUsuario().getEmail(), asunto, textoPaciente,
+                "CITA_CAMBIO", cita.getId());
         boolean paciente = enviar(cita.getPaciente().getUsuario().getEmail(), asunto, textoPaciente);
         boolean medico = enviar(cita.getMedico().getUsuario().getEmail(), asunto, textoMedico);
         return new ResultadoNotificacion(paciente, medico);
@@ -59,41 +65,52 @@ public class NotificacionCitaService {
                 "\nSíntomas: " + nvl(cita.getTriageSintomas()) +
                 "\n" + triage + piel +
                 "\n\nRevisa ficha, historial y SOAP en el portal. Este resumen no sustituye tu criterio clínico.";
+        inbox.crearParaEmail(cita.getMedico().getUsuario().getEmail(), asunto, contenido,
+                "CITA_NUEVA", cita.getId());
         return enviar(cita.getMedico().getUsuario().getEmail(), asunto, contenido);
+    }
+
+    public boolean notificarCitaAceptada(Cita cita) {
+        String asunto = "Tu cita fue aceptada";
+        String texto = "Hola " + cita.getPaciente().getUsuario().getNombre() + ",\n\n" +
+                cita.getMedico().getUsuario().getNombre() + " aceptó tu cita del " +
+                FORMATO.format(cita.getFechaHora()) + " (" + cita.getMedico().getEspecialidad() + ").\n\n" +
+                "Revisa el detalle en tu portal Hospy.\n\n— Equipo Hospy";
+        inbox.crearParaEmail(cita.getPaciente().getUsuario().getEmail(), asunto, texto,
+                "CITA_ACEPTADA", cita.getId());
+        return enviar(cita.getPaciente().getUsuario().getEmail(), asunto, texto);
+    }
+
+    public boolean notificarCitaRechazada(Cita cita) {
+        String asunto = "Tu cita no pudo ser aceptada";
+        String texto = "Hola " + cita.getPaciente().getUsuario().getNombre() + ",\n\n" +
+                "La cita del " + FORMATO.format(cita.getFechaHora()) + " con " +
+                cita.getMedico().getUsuario().getNombre() + " fue rechazada. Agenda otro cupo en el portal.\n\n— Equipo Hospy";
+        inbox.crearParaEmail(cita.getPaciente().getUsuario().getEmail(), asunto, texto,
+                "CITA_RECHAZADA", cita.getId());
+        return enviar(cita.getPaciente().getUsuario().getEmail(), asunto, texto);
     }
 
     private static String nvl(String s) { return s == null || s.isBlank() ? "no informado" : s; }
 
-    /**
-     * Notifica al paciente desplazado y al médico cuando una cita fue movida
-     * porque ingresó un paciente con mayor prioridad de triage.
-     */
+    /** Avisa solo al paciente cuya cita se movió por otro caso más urgente. */
     public ResultadoNotificacion notificarRepriorizacion(Cita citaDesplazada, LocalDateTime fechaAnterior,
                                                           int prioridadNuevoPaciente, String severidadNuevo) {
-        String asuntoPaciente = "⚠ Tu cita médica fue reprogramada";
+        String asuntoPaciente = "Tu cita médica fue reprogramada";
         String textoPaciente = "Hola " + citaDesplazada.getPaciente().getUsuario().getNombre() + ",\n\n" +
                 "Tu cita con " + citaDesplazada.getMedico().getUsuario().getNombre() +
                 " (" + citaDesplazada.getMedico().getEspecialidad() + ") que estaba programada para el " +
                 FORMATO.format(fechaAnterior) + " fue reprogramada para el " +
                 FORMATO.format(citaDesplazada.getFechaHora()) + ".\n\n" +
-                "Motivo: Ingresó un paciente con una urgencia mayor (prioridad " + prioridadNuevoPaciente +
-                "/10, severidad " + severidadNuevo + ") que requiere atención prioritaria.\n\n" +
-                "Lamentamos la inconveniencia. Si necesitas cambiar la nueva fecha, " +
-                "ingresa al portal de Hospy o contacta al centro médico.\n\n" +
+                "Motivo: ingresó un paciente con una urgencia mayor (prioridad " + prioridadNuevoPaciente +
+                "/10, severidad " + severidadNuevo + ").\n\n" +
+                "Revisa el detalle en tu portal Hospy. Si necesitas otra fecha, agenda de nuevo o contacta al centro.\n\n" +
                 "— Equipo Hospy";
 
-        String asuntoMedico = "📋 Cita reprogramada por priorización IA";
-        String textoMedico = "Hola " + citaDesplazada.getMedico().getUsuario().getNombre() + ",\n\n" +
-                "La cita de " + citaDesplazada.getPaciente().getUsuario().getNombre() +
-                " fue movida de " + FORMATO.format(fechaAnterior) + " a " +
-                FORMATO.format(citaDesplazada.getFechaHora()) + ".\n\n" +
-                "Un paciente con prioridad " + prioridadNuevoPaciente + "/10 (severidad " + severidadNuevo +
-                ") tomó el horario anterior por urgencia clínica mayor.\n\n" +
-                "Revisa tu agenda actualizada en el portal de Hospy.";
-
+        inbox.crearParaEmail(citaDesplazada.getPaciente().getUsuario().getEmail(),
+                "Tu cita fue reprogramada", textoPaciente, "CITA_REPROGRAMADA", citaDesplazada.getId());
         boolean paciente = enviar(citaDesplazada.getPaciente().getUsuario().getEmail(), asuntoPaciente, textoPaciente);
-        boolean medico = enviar(citaDesplazada.getMedico().getUsuario().getEmail(), asuntoMedico, textoMedico);
-        return new ResultadoNotificacion(paciente, medico);
+        return new ResultadoNotificacion(paciente, false);
     }
 
     private boolean enviar(String destinatario, String asunto, String contenido) {
