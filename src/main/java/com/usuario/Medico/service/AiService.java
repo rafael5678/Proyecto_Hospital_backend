@@ -35,10 +35,10 @@ public class AiService {
     @Value("${ai.gemini.api-key:}")
     private String geminiKey;
 
-    @Value("${ai.gemini.model:gemini-3.8-flash}")
+    @Value("${ai.gemini.model:gemini-3.6-flash}")
     private String geminiModel;
 
-    @Value("${ai.gemini.fallback-models:gemini-3.6-flash,gemini-2.5-flash}")
+    @Value("${ai.gemini.fallback-models:gemini-3.8-flash}")
     private String geminiFallbackModels;
 
     @Value("${ai.gemini.url:https://generativelanguage.googleapis.com/v1beta/models}")
@@ -208,13 +208,12 @@ public class AiService {
 
     private List<String> modelosGemini() {
         List<String> modelos = new ArrayList<>();
-        agregarModelo(modelos, "gemini-3.8-flash");
+        agregarModelo(modelos, "gemini-3.6-flash");
         agregarModelo(modelos, geminiModel);
         if (geminiFallbackModels != null) {
             for (String m : geminiFallbackModels.split(",")) agregarModelo(modelos, m);
         }
-        agregarModelo(modelos, "gemini-3.6-flash");
-        agregarModelo(modelos, "gemini-2.5-flash");
+        agregarModelo(modelos, "gemini-3.8-flash");
         return modelos;
     }
 
@@ -255,7 +254,7 @@ public class AiService {
             String url = geminiBaseUrl + "/" + modelo + ":generateContent?key=" + geminiKey;
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(timeout))
+                    .timeout(Duration.ofSeconds(Math.min(timeout, 12)))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8))
                     .build();

@@ -16,8 +16,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -131,73 +135,63 @@ public class CitaService {
     public List<CupoResponse> listarCupos(Long medicoId, int limite) {
         Medico medico = medicoRepository.findById(medicoId)
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
-        horarioService.asegurarHorarioLaboral(medico);
-        int max = Math.min(Math.max(limite, 1), 24);
-        List<CupoResponse> cupos = new java.util.ArrayList<>();
-        LocalDateTime cursor = alinearMediaHora(LocalDateTime.now().plusMinutes(5));
-        var estadosActivos = List.of(EstadoCita.PENDIENTE, EstadoCita.ACEPTADA);
-        int intentos = 0;
-        while (cupos.size() < max && intentos < 960) {
-            LocalDateTime fin = cursor.plusMinutes(DURACION_CITA_MINUTOS);
-            if (estaEnHorarioLaboral(medico, cursor)) {
-                boolean ocupado = citaRepository.existeCitaSolapada(
-                        medico, cursor.minusMinutes(DURACION_CITA_MINUTOS),
-                        fin, estadosActivos, null);
-                if (!ocupado) {
-                    cupos.add(CupoResponse.builder()
-                            .fechaHora(cursor)
-                            .dia(HorarioService.nombreDia(cursor.getDayOfWeek().getValue()))
-                            .etiqueta(HorarioService.nombreDia(cursor.getDayOfWeek().getValue())
-                                    + " " + cursor.toLocalDate() + " · " + cursor.toLocalTime().withSecond(0))
-                            .ocupadoMenorPrioridad(false)
-                            .build());
-                }
-            }
-            cursor = cursor.plusMinutes(DURACION_CITA_MINUTOS);
-            if (cursor.getHour() >= 21) {
-                cursor = cursor.plusDays(1).withHour(6).withMinute(0).withSecond(0).withNano(0);
-            }
-            intentos++;
+        int max = Math.min(Math.max(limite, 1), 16);
+        List<CupoResponse> cupos = new ArrayList<>();
+        for (LocalDateTime slot : slotsLibres(medico, LocalDateTime.now().plusMinutes(5), max)) {
+            cupos.add(CupoResponse.builder()
+                    .fechaHora(slot)
+                    .dia(HorarioService.nombreDia(slot.getDayOfWeek().getValue()))
+                    .etiqueta(HorarioService.nombreDia(slot.getDayOfWeek().getValue())
+                            + " " + slot.toLocalDate() + " · " + slot.toLocalTime().withSecond(0).withNano(0))
+                    .ocupadoMenorPrioridad(false)
+                    .build());
         }
         return cupos;
     }
 
-    /**
-     * Busca el próximo bloque de 30 minutos disponible para el médico,
-     * empezando desde la fecha dada. Recorre hasta 30 días adelante.
-     */
     private LocalDateTime buscarProximoSlotDisponible(Medico medico, LocalDateTime desde) {
-        var estadosActivos = List.of(EstadoCita.PENDIENTE, EstadoCita.ACEPTADA);
+        List<LocalDateTime> slots = slotsLibres(medico, desde, 1);
+        if (slots.isEmpty()) {
+            throw new RuntimeException("El médico no tiene cupos libres en las próximas semanas.");
+        }
+        return slots.get(0);
+    }
+
+    /** Una sola lectura de horarios y citas; recorre ventanas laborales, no cada media hora del mes. */
+    private List<LocalDateTime> slotsLibres(Medico medico, LocalDateTime desde, int max) {
+        horarioService.asegurarHorarioLaboral(medico);
         var horarios = horarioRepository.findByMedicoAndDisponibleTrue(medico);
-        LocalDateTime candidato = desde;
-        int intentos = 0;
-
-        while (intentos < 960) { /* ~30 días x 32 slots/día */
-            final LocalDateTime finCandidato = candidato.plusMinutes(DURACION_CITA_MINUTOS);
-            final LocalDateTime cand = candidato;
-
-            boolean dentroDeHorario = horarios.stream().anyMatch(h ->
-                    h.getDiaSemana() == cand.getDayOfWeek().getValue()
-                    && !cand.toLocalTime().isBefore(h.getHoraInicio())
-                    && !finCandidato.toLocalTime().isAfter(h.getHoraFin()));
-
-            if (dentroDeHorario) {
-                boolean ocupado = citaRepository.existeCitaSolapada(
-                        medico, candidato.minusMinutes(DURACION_CITA_MINUTOS),
-                        finCandidato, estadosActivos, null);
-                if (!ocupado && candidato.isAfter(LocalDateTime.now())) {
-                    return candidato;
+        var estados = List.of(EstadoCita.PENDIENTE, EstadoCita.ACEPTADA);
+        Set<LocalDateTime> ocupadas = new HashSet<>();
+        for (Cita c : citaRepository.findByMedicoOrderByFechaHoraAsc(medico)) {
+            if (estados.contains(c.getEstado()) && c.getFechaHora() != null) {
+                ocupadas.add(c.getFechaHora().withSecond(0).withNano(0));
+            }
+        }
+        List<LocalDateTime> out = new ArrayList<>();
+        LocalDateTime piso = alinearMediaHora(desde);
+        LocalDate dia = piso.toLocalDate();
+        for (int d = 0; d < 21 && out.size() < max; d++) {
+            LocalDate fecha = dia.plusDays(d);
+            int dow = fecha.getDayOfWeek().getValue();
+            for (var h : horarios) {
+                if (h.getDiaSemana() != dow) continue;
+                LocalDateTime slot = fecha.atTime(h.getHoraInicio()).withSecond(0).withNano(0);
+                if (slot.isBefore(piso)) slot = piso.toLocalDate().equals(fecha) ? piso : slot;
+                if (slot.toLocalTime().isBefore(h.getHoraInicio())) slot = fecha.atTime(h.getHoraInicio());
+                slot = alinearMediaHora(slot);
+                while (out.size() < max
+                        && slot.toLocalDate().equals(fecha)
+                        && !slot.toLocalTime().isBefore(h.getHoraInicio())
+                        && !slot.plusMinutes(DURACION_CITA_MINUTOS).toLocalTime().isAfter(h.getHoraFin())) {
+                    if (slot.isAfter(LocalDateTime.now()) && !ocupadas.contains(slot)) {
+                        out.add(slot);
+                    }
+                    slot = slot.plusMinutes(DURACION_CITA_MINUTOS);
                 }
             }
-
-            candidato = candidato.plusMinutes(DURACION_CITA_MINUTOS);
-            /* Si pasamos las 21:00, saltar al día siguiente a las 06:00 */
-            if (candidato.getHour() >= 21) {
-                candidato = candidato.plusDays(1).withHour(6).withMinute(0).withSecond(0);
-            }
-            intentos++;
         }
-        throw new RuntimeException("El médico no tiene cupos libres en los próximos 30 días.");
+        return out;
     }
 
     private LocalDateTime primerSlotLaboral(Medico medico, LocalDateTime desde) {

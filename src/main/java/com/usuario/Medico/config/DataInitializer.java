@@ -68,7 +68,6 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void asegurarMedico(String email, String nombre, String especialidad, String licencia) {
-        if (usuarioRepository.findByEmail(email).isPresent()) return;
         UsuarioRequest req = new UsuarioRequest();
         req.setNombre(nombre);
         req.setEmail(email);
@@ -76,11 +75,27 @@ public class DataInitializer implements CommandLineRunner {
         req.setRol("MEDICO");
         req.setEspecialidad(especialidad);
         req.setNumeroLicencia(licencia);
-        Usuario u = usuarioRepository.save(Usuario.builder()
-                .nombre(nombre).email(email)
-                .password(passwordEncoder.encode("Medico123"))
-                .rol(Rol.MEDICO).activo(true).build());
-        perfilService.crearPerfil(u, req);
+        usuarioRepository.findByEmail(email).ifPresentOrElse(u -> {
+            u.setNombre(nombre);
+            u.setRol(Rol.MEDICO);
+            u.setActivo(true);
+            usuarioRepository.save(u);
+            medicoRepository.findByUsuario(u).ifPresentOrElse(m -> {
+                m.setEspecialidad(especialidad);
+                medicoRepository.save(m);
+                horarioService.asegurarHorarioLaboral(m);
+            }, () -> {
+                perfilService.crearPerfil(u, req);
+                medicoRepository.findByUsuario(u).ifPresent(horarioService::asegurarHorarioLaboral);
+            });
+        }, () -> {
+            Usuario u = usuarioRepository.save(Usuario.builder()
+                    .nombre(nombre).email(email)
+                    .password(passwordEncoder.encode("Medico123"))
+                    .rol(Rol.MEDICO).activo(true).build());
+            perfilService.crearPerfil(u, req);
+            medicoRepository.findByUsuario(u).ifPresent(horarioService::asegurarHorarioLaboral);
+        });
     }
 
     /** Credenciales fijas de demo (se reactivan y restablecen al arrancar). */
