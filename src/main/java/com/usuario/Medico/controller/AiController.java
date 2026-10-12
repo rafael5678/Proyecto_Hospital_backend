@@ -70,6 +70,12 @@ public class AiController {
         return ResponseEntity.ok(aiService.interacciones(req));
     }
 
+    @PostMapping("/admin-operacion")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<AiAdminOperacionResponse> adminOperacion(@Valid @RequestBody AiAdminOperacionRequest req) {
+        return ResponseEntity.ok(aiService.adminOperacion(req));
+    }
+
     /* Todos (autenticados) pueden triangular precios */
     @PostMapping("/precios")
     @PreAuthorize("isAuthenticated()")

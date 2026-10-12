@@ -24,6 +24,7 @@ public class UsuarioService {
     private final AdministradorRepository administradorRepository;
     private final PasswordEncoder passwordEncoder;
     private final PerfilService perfilService;
+    private final HorarioService horarioService;
 
     public List<UsuarioDTO> listarTodos() {
         List<UsuarioDTO> lista = new ArrayList<>();
@@ -64,6 +65,9 @@ public class UsuarioService {
                 .build();
         usuario = usuarioRepository.save(usuario);
         perfilService.crearPerfil(usuario, req);
+        if (rol == Rol.MEDICO) {
+            medicoRepository.findByUsuario(usuario).ifPresent(horarioService::asegurarHorarioLaboral);
+        }
         return toDtoByRol(usuario);
     }
 

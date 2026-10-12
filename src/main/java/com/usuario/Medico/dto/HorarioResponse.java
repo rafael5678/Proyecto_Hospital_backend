@@ -11,6 +11,7 @@ public class HorarioResponse {
     private Long id;
     private Long medicoId;
     private Integer diaSemana;
+    private String diaNombre;
     private LocalTime horaInicio;
     private LocalTime horaFin;
     private Boolean disponible;

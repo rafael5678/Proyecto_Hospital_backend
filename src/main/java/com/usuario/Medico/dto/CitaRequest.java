@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 public class CitaRequest {
     @NotNull
     private Long medicoId;
-    @NotNull
+    /** Si falta, la aplicación asigna el primer cupo laboral del médico. */
     private LocalDateTime fechaHora;
     private String motivo;
     private String notas;

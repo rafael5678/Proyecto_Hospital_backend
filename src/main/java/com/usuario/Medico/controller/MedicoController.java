@@ -1,7 +1,9 @@
 package com.usuario.Medico.controller;
 
+import com.usuario.Medico.dto.CupoResponse;
 import com.usuario.Medico.dto.HorarioResponse;
 import com.usuario.Medico.dto.UsuarioDTO;
+import com.usuario.Medico.service.CitaService;
 import com.usuario.Medico.service.HorarioService;
 import com.usuario.Medico.service.UsuarioService;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +19,7 @@ public class MedicoController {
 
     private final UsuarioService usuarioService;
     private final HorarioService horarioService;
+    private final CitaService citaService;
 
     @GetMapping
     public ResponseEntity<List<UsuarioDTO>> listarMedicos() {
@@ -26,5 +29,12 @@ public class MedicoController {
     @GetMapping("/{id}/horarios")
     public ResponseEntity<List<HorarioResponse>> horarios(@PathVariable Long id) {
         return ResponseEntity.ok(horarioService.listarPorMedico(id));
+    }
+
+    @GetMapping("/{id}/cupos")
+    public ResponseEntity<List<CupoResponse>> cupos(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "12") int limite) {
+        return ResponseEntity.ok(citaService.listarCupos(id, limite));
     }
 }

@@ -9,6 +9,7 @@ import com.usuario.Medico.repository.AdministradorRepository;
 import com.usuario.Medico.repository.MedicoRepository;
 import com.usuario.Medico.repository.PacienteRepository;
 import com.usuario.Medico.repository.UsuarioRepository;
+import com.usuario.Medico.service.HorarioService;
 import com.usuario.Medico.service.PerfilService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
@@ -26,6 +27,7 @@ public class DataInitializer implements CommandLineRunner {
     private final MedicoRepository medicoRepository;
     private final PasswordEncoder passwordEncoder;
     private final PerfilService perfilService;
+    private final HorarioService horarioService;
 
     @Override
     @Transactional
@@ -36,6 +38,8 @@ public class DataInitializer implements CommandLineRunner {
         asegurarMedico("neurologia@hospy.com", "Dra. Ana López", "Neurología", "MED-2024-002");
         asegurarMedico("dermatologia@hospy.com", "Dr. Carlos Pérez", "Dermatología", "MED-2024-003");
         asegurarMedico("traumatologia@hospy.com", "Dr. Andrés Molina", "Traumatología", "MED-2024-004");
+        asegurarMedico("general@hospy.com", "Dr. Luis Herrera", "Medicina General", "MED-2024-005");
+        medicoRepository.findAll().forEach(horarioService::asegurarHorarioLaboral);
         asegurarPacienteDemo("pedro@hospy.com", "Pedro Paciente", "123456");
         asegurarPacienteDemo("paciente@hospy.com", "Juan Reyes", "Paciente123");
     }

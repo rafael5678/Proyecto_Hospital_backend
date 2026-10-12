@@ -464,6 +464,68 @@ public class AiService {
                 .modoDemo(true).build();
     }
 
+    /* ============ Admin: interpretar alta de médico/paciente ============== */
+    public AiAdminOperacionResponse adminOperacion(AiAdminOperacionRequest req) {
+        final String system = """
+                Eres el asistente de administración del hospital Hospy.
+                Solo puedes proponer CREAR_MEDICO o CREAR_PACIENTE o INFO.
+                No inventes módulos nuevos de la aplicación. No des de baja usuarios.
+                Especialidades válidas: Medicina General, Cardiología, Neurología, Dermatología,
+                Traumatología, Pediatría, Ginecología, Oftalmología, Otorrinolaringología,
+                Gastroenterología, Endocrinología, Urología, Psiquiatría, Neumología,
+                Medicina Interna, Ortopedia, Reumatología, Oncología, Nefrología, Infectología.
+                Devuelve SOLO JSON:
+                {"accion":"CREAR_MEDICO|CREAR_PACIENTE|INFO","nombre":"...","email":"...@hospy.com",
+                 "especialidad":"...","passwordSugerida":"Medico123","documento":"","telefono":"",
+                 "mensaje":"qué vas a crear y por qué"}
+                """;
+        String user = "Instrucción del administrador: " + req.getInstruccion();
+        Optional<String> llm = llamarLlm(system, user);
+        if (llm.isEmpty()) return adminOperacionLocal(req.getInstruccion());
+        try {
+            AiAdminOperacionResponse r = mapper.readValue(llm.get(), AiAdminOperacionResponse.class);
+            r.setModoDemo(false);
+            if (r.getAccion() == null || r.getAccion().isBlank()) r.setAccion("INFO");
+            r.setAccion(r.getAccion().trim().toUpperCase());
+            if (!r.getAccion().equals("CREAR_MEDICO") && !r.getAccion().equals("CREAR_PACIENTE")) {
+                r.setAccion("INFO");
+            }
+            return r;
+        } catch (Exception ex) {
+            return adminOperacionLocal(req.getInstruccion());
+        }
+    }
+
+    private AiAdminOperacionResponse adminOperacionLocal(String instruccion) {
+        String t = instruccion == null ? "" : instruccion.toLowerCase();
+        if (t.contains("medico") || t.contains("médico") || t.contains("doctor")) {
+            String esp = "Medicina General";
+            if (t.contains("cardio")) esp = "Cardiología";
+            else if (t.contains("neuro")) esp = "Neurología";
+            else if (t.contains("derma") || t.contains("piel")) esp = "Dermatología";
+            else if (t.contains("trauma") || t.contains("hueso")) esp = "Traumatología";
+            else if (t.contains("pedia")) esp = "Pediatría";
+            else if (t.contains("gine")) esp = "Ginecología";
+            return AiAdminOperacionResponse.builder()
+                    .accion("CREAR_MEDICO").especialidad(esp)
+                    .passwordSugerida("Medico123")
+                    .email("medico." + esp.toLowerCase().replace(" ", "") + "@hospy.com")
+                    .nombre("Dr. " + esp)
+                    .mensaje("Borrador local: crear médico de " + esp + ". Revisa nombre y correo antes de confirmar.")
+                    .modoDemo(true).build();
+        }
+        if (t.contains("paciente")) {
+            return AiAdminOperacionResponse.builder()
+                    .accion("CREAR_PACIENTE").passwordSugerida("Paciente123")
+                    .mensaje("Borrador local: crear paciente. Completa nombre, correo y documento.")
+                    .modoDemo(true).build();
+        }
+        return AiAdminOperacionResponse.builder()
+                .accion("INFO")
+                .mensaje("Puedo crear un médico o un paciente. Ejemplo: «Crea un médico de pediatría llamado Ana Ruiz».")
+                .modoDemo(true).build();
+    }
+
     /* ============ 3. Escriba SOAP médico ============== */
     public AiSoapResponse soap(AiSoapRequest req) {
         final String system = """

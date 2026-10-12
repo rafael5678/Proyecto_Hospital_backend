@@ -2,6 +2,7 @@ package com.usuario.Medico.service;
 
 import com.usuario.Medico.dto.CitaRequest;
 import com.usuario.Medico.dto.CitaResponse;
+import com.usuario.Medico.dto.CupoResponse;
 import com.usuario.Medico.dto.PacientePerfilDTO;
 import com.usuario.Medico.dto.ReprogramarCitaRequest;
 import com.usuario.Medico.dto.ReprogramarCitaResponse;
@@ -30,6 +31,7 @@ public class CitaService {
     private final CambioCitaRepository cambioCitaRepository;
     private final NotificacionCitaService notificacionCitaService;
     private final HorarioRepository horarioRepository;
+    private final HorarioService horarioService;
 
     @Transactional
     public CitaResponse agendar(String emailPaciente, CitaRequest req) {
@@ -37,11 +39,23 @@ public class CitaService {
                 .orElseThrow(() -> new RuntimeException("Perfil de paciente no encontrado"));
         Medico medico = medicoRepository.findByIdForUpdate(req.getMedicoId())
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
-        validarHorario(medico, req.getFechaHora());
+        horarioService.asegurarHorarioLaboral(medico);
 
         /* ====== Repriorización automática por gravedad ====== */
         String aviso = null;
         int nuevaPrioridad = req.getTriagePrioridad() != null ? req.getTriagePrioridad() : 5;
+        LocalDateTime desde = alinearMediaHora(LocalDateTime.now().plusMinutes(5));
+        if (req.getFechaHora() == null || !estaEnHorarioLaboral(medico, req.getFechaHora())
+                || !req.getFechaHora().isAfter(LocalDateTime.now())) {
+            if (nuevaPrioridad >= 8) {
+                req.setFechaHora(primerSlotLaboral(medico, desde));
+                aviso = "Por la gravedad, la aplicación tomó el cupo más próximo del médico.";
+            } else {
+                req.setFechaHora(buscarProximoSlotDisponible(medico, desde));
+                aviso = "La aplicación asignó el primer cupo libre del médico.";
+            }
+        }
+        validarHorarioPermitirSolape(medico, req.getFechaHora());
         var estadosActivos = List.of(EstadoCita.PENDIENTE, EstadoCita.ACEPTADA);
         LocalDateTime inicioBloque = req.getFechaHora();
         LocalDateTime finBloque = inicioBloque.plusMinutes(DURACION_CITA_MINUTOS);
@@ -114,6 +128,40 @@ public class CitaService {
         return dto;
     }
 
+    public List<CupoResponse> listarCupos(Long medicoId, int limite) {
+        Medico medico = medicoRepository.findById(medicoId)
+                .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
+        horarioService.asegurarHorarioLaboral(medico);
+        int max = Math.min(Math.max(limite, 1), 24);
+        List<CupoResponse> cupos = new java.util.ArrayList<>();
+        LocalDateTime cursor = alinearMediaHora(LocalDateTime.now().plusMinutes(5));
+        var estadosActivos = List.of(EstadoCita.PENDIENTE, EstadoCita.ACEPTADA);
+        int intentos = 0;
+        while (cupos.size() < max && intentos < 960) {
+            LocalDateTime fin = cursor.plusMinutes(DURACION_CITA_MINUTOS);
+            if (estaEnHorarioLaboral(medico, cursor)) {
+                boolean ocupado = citaRepository.existeCitaSolapada(
+                        medico, cursor.minusMinutes(DURACION_CITA_MINUTOS),
+                        fin, estadosActivos, null);
+                if (!ocupado) {
+                    cupos.add(CupoResponse.builder()
+                            .fechaHora(cursor)
+                            .dia(HorarioService.nombreDia(cursor.getDayOfWeek().getValue()))
+                            .etiqueta(HorarioService.nombreDia(cursor.getDayOfWeek().getValue())
+                                    + " " + cursor.toLocalDate() + " · " + cursor.toLocalTime().withSecond(0))
+                            .ocupadoMenorPrioridad(false)
+                            .build());
+                }
+            }
+            cursor = cursor.plusMinutes(DURACION_CITA_MINUTOS);
+            if (cursor.getHour() >= 21) {
+                cursor = cursor.plusDays(1).withHour(6).withMinute(0).withSecond(0).withNano(0);
+            }
+            intentos++;
+        }
+        return cupos;
+    }
+
     /**
      * Busca el próximo bloque de 30 minutos disponible para el médico,
      * empezando desde la fecha dada. Recorre hasta 30 días adelante.
@@ -149,7 +197,27 @@ public class CitaService {
             }
             intentos++;
         }
-        return desde.plusDays(1).withHour(8).withMinute(0); /* fallback */
+        throw new RuntimeException("El médico no tiene cupos libres en los próximos 30 días.");
+    }
+
+    private LocalDateTime primerSlotLaboral(Medico medico, LocalDateTime desde) {
+        LocalDateTime candidato = alinearMediaHora(desde);
+        for (int i = 0; i < 960; i++) {
+            if (estaEnHorarioLaboral(medico, candidato)) return candidato;
+            candidato = candidato.plusMinutes(DURACION_CITA_MINUTOS);
+            if (candidato.getHour() >= 21) {
+                candidato = candidato.plusDays(1).withHour(6).withMinute(0).withSecond(0).withNano(0);
+            }
+        }
+        return buscarProximoSlotDisponible(medico, desde);
+    }
+
+    private static LocalDateTime alinearMediaHora(LocalDateTime t) {
+        LocalDateTime n = t.withSecond(0).withNano(0);
+        int m = n.getMinute();
+        if (m == 0 || m == 30) return n;
+        if (m < 30) return n.withMinute(30);
+        return n.plusHours(1).withMinute(0);
     }
 
     private static String nvl(String s) { return s == null || s.isBlank() ? "no especificado" : s; }
@@ -271,18 +339,27 @@ public class CitaService {
         validarHorario(medico, fechaHora, null);
     }
 
-    private void validarHorario(Medico medico, LocalDateTime fechaHora, Long citaExcluida) {
-        if (!fechaHora.isAfter(LocalDateTime.now())) {
-            throw new RuntimeException("La fecha de la cita debe estar en el futuro");
+    private void validarHorarioPermitirSolape(Medico medico, LocalDateTime fechaHora) {
+        if (fechaHora == null || !fechaHora.isAfter(LocalDateTime.now())) {
+            throw new RuntimeException("No hay un cupo futuro para este médico.");
         }
+        if (!estaEnHorarioLaboral(medico, fechaHora)) {
+            throw new RuntimeException("Ese cupo no está en el horario laboral del médico.");
+        }
+    }
+
+    private boolean estaEnHorarioLaboral(Medico medico, LocalDateTime fechaHora) {
+        if (fechaHora == null) return false;
         LocalDateTime finCita = fechaHora.plusMinutes(DURACION_CITA_MINUTOS);
-        boolean dentroDeHorario = horarioRepository.findByMedicoAndDisponibleTrue(medico).stream()
+        return horarioRepository.findByMedicoAndDisponibleTrue(medico).stream()
                 .anyMatch(horario -> horario.getDiaSemana() == fechaHora.getDayOfWeek().getValue()
                         && !fechaHora.toLocalTime().isBefore(horario.getHoraInicio())
                         && !finCita.toLocalTime().isAfter(horario.getHoraFin()));
-        if (!dentroDeHorario) {
-            throw new RuntimeException("La hora debe estar dentro de un horario disponible del médico (citas de 30 minutos)");
-        }
+    }
+
+    private void validarHorario(Medico medico, LocalDateTime fechaHora, Long citaExcluida) {
+        validarHorarioPermitirSolape(medico, fechaHora);
+        LocalDateTime finCita = fechaHora.plusMinutes(DURACION_CITA_MINUTOS);
         var estadosActivos = List.of(EstadoCita.PENDIENTE, EstadoCita.ACEPTADA);
         if (citaRepository.existeCitaSolapada(medico, fechaHora.minusMinutes(DURACION_CITA_MINUTOS),
             finCita, estadosActivos, citaExcluida)) {
