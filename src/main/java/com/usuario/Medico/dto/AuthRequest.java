@@ -11,5 +11,3 @@ public class AuthRequest {
     private String password;
     private String rol;
 }
-
-// DTO Request: Carga útil para inicio de sesión con correo y contraseña cifrada.

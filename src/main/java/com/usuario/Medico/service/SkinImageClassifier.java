@@ -344,5 +344,3 @@ public class SkinImageClassifier {
         return out;
     }
 }
-
-// Documentación de soporte SkinImageClassifier: Wrapper del modelo convolucional entrenado sobre dataset HAM10000.

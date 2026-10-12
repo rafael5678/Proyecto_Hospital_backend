@@ -115,10 +115,13 @@ public class ClinicalDatasetService {
                     .modoDemo(false)
                     .build();
         }
-        if (!car.isEmpty() || hitTexto) {
-            car.add(0, "Clasificación textual con etiquetas tipo HAM10000 / PAD-UFES (sin foto usable).");
+        boolean hayFoto = req.getImagenBase64() != null && !req.getImagenBase64().isBlank();
+        if (hayFoto && porImagen == null) {
+            car.add(0, "Se recibió foto de evidencia, pero el clasificador local no pudo leerla. Se analiza el texto con HAM10000 / PAD-UFES.");
+        } else if (!car.isEmpty() || hitTexto) {
+            car.add(0, "Clasificación textual con etiquetas tipo HAM10000 / PAD-UFES.");
         } else {
-            car.add("Sin foto y sin coincidencia textual clara. Se sugiere Dermatología para inspección presencial.");
+            car.add("Sin coincidencia clara en el dataset de piel. Se sugiere Dermatología o Traumatología según el resto del análisis.");
         }
         return AiDermatologiaResponse.builder()
                 .nivelRiesgo(riesgo).scoreRiesgo(score)
@@ -151,6 +154,25 @@ public class ClinicalDatasetService {
 
     private static String nvl(String s, String def) {
         return s == null || s.isBlank() ? def : s;
+    }
+
+    public String contextoTriageParaGemini(AiTriageRequest req) {
+        AiTriageResponse local = triage(req);
+        return "Referencia datasets ESI/MTS + MedMCQA/MedQA: severidad=" + local.getSeveridad()
+                + ", ESI=" + local.getNivelEsi()
+                + ", prioridad=" + local.getPrioridad()
+                + ", especialidad=" + local.getEspecialidadRecomendada()
+                + ", hallazgos=[" + String.join("; ", nvlList(local.getHallazgos())) + "]. "
+                + "Úsala como pista, no como verdad absoluta: si el texto o la foto contradicen, corrige.";
+    }
+
+    public String contextoPielParaGemini(AiDermatologiaRequest req) {
+        AiDermatologiaResponse local = dermatologia(req);
+        return "Referencia clasificador ExtraTrees + HAM10000/PAD-UFES: riesgo=" + local.getNivelRiesgo()
+                + ", score=" + local.getScoreRiesgo()
+                + ", diferenciales=[" + String.join("; ", nvlList(local.getDiagnosticosDiferenciales())) + "], "
+                + "observado=[" + String.join("; ", nvlList(local.getCaracteristicasObservadas())) + "]. "
+                + "Si hay foto, descríbela tú con detalle y corrige esta pista si no coincide.";
     }
 
     public AiInteraccionResponse interacciones(AiInteraccionRequest req) {
@@ -226,5 +248,3 @@ public class ClinicalDatasetService {
 
     private static String nvl(String s) { return s == null ? "" : s; }
 }
-
-// Servicio de Datos Clinicos: Carga de datasets locales ESI y catalogos clinicos.

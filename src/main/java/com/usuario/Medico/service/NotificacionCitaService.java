@@ -116,4 +116,3 @@ public class NotificacionCitaService {
 
     public record ResultadoNotificacion(boolean pacienteEnviado, boolean medicoEnviado) { }
 }
-// Documentación de soporte NotificacionCitaService: Despacha avisos automáticos ante eventos en la agenda médica.

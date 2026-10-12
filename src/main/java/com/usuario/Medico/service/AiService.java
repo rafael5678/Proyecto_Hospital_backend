@@ -1,5 +1,6 @@
 package com.usuario.Medico.service;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.usuario.Medico.dto.*;
@@ -33,8 +34,11 @@ public class AiService {
     @Value("${ai.gemini.api-key:}")
     private String geminiKey;
 
-    @Value("${ai.gemini.model:gemini-2.0-flash}")
+    @Value("${ai.gemini.model:gemini-3.8-flash}")
     private String geminiModel;
+
+    @Value("${ai.gemini.fallback-models:gemini-3.6-flash,gemini-2.5-flash}")
+    private String geminiFallbackModels;
 
     @Value("${ai.gemini.url:https://generativelanguage.googleapis.com/v1beta/models}")
     private String geminiBaseUrl;
@@ -61,6 +65,7 @@ public class AiService {
     public AiService(ClinicalDatasetService datasets) {
         this.datasets = datasets;
         this.mapper = new ObjectMapper();
+        this.mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -186,6 +191,41 @@ public class AiService {
     }
 
     private Optional<String> llamarGemini(String systemPrompt, String userPrompt, String mimeType, String base64, boolean json) {
+        if (!hayGemini()) return Optional.empty();
+        List<String> modelos = modelosGemini();
+        for (String modelo : modelos) {
+            Optional<String> out = llamarGeminiModelo(modelo, systemPrompt, userPrompt, mimeType, base64, json);
+            if (out.isPresent()) return out;
+        }
+        return Optional.empty();
+    }
+
+    private List<String> modelosGemini() {
+        List<String> modelos = new ArrayList<>();
+        agregarModelo(modelos, "gemini-3.8-flash");
+        agregarModelo(modelos, geminiModel);
+        if (geminiFallbackModels != null) {
+            for (String m : geminiFallbackModels.split(",")) agregarModelo(modelos, m);
+        }
+        agregarModelo(modelos, "gemini-3.6-flash");
+        agregarModelo(modelos, "gemini-2.5-flash");
+        return modelos;
+    }
+
+    private static void agregarModelo(List<String> modelos, String modelo) {
+        if (modelo == null) return;
+        String t = modelo.trim();
+        if (t.isBlank() || modeloRetirado(t)) return;
+        if (modelos.stream().noneMatch(t::equalsIgnoreCase)) modelos.add(t);
+    }
+
+    private static boolean modeloRetirado(String modelo) {
+        String t = modelo.toLowerCase();
+        return t.contains("gemini-2.0") || t.contains("gemini-1.5-flash-latest");
+    }
+
+    private Optional<String> llamarGeminiModelo(String modelo, String systemPrompt, String userPrompt,
+                                               String mimeType, String base64, boolean json) {
         try {
             List<Map<String, Object>> parts = new ArrayList<>();
             parts.add(Map.of("text", userPrompt));
@@ -198,13 +238,15 @@ public class AiService {
             }
             body.put("contents", List.of(Map.of("role", "user", "parts", parts)));
             Map<String, Object> gen = new LinkedHashMap<>();
-            gen.put("temperature", 0.1);
+            if (!modelo.startsWith("gemini-3")) {
+                gen.put("temperature", 0.2);
+            }
             if (json) {
                 gen.put("responseMimeType", "application/json");
             }
             body.put("generationConfig", gen);
 
-            String url = geminiBaseUrl + "/" + geminiModel + ":generateContent?key=" + geminiKey;
+            String url = geminiBaseUrl + "/" + modelo + ":generateContent?key=" + geminiKey;
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(timeout))
@@ -213,12 +255,17 @@ public class AiService {
                     .build();
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (resp.statusCode() != 200) {
-                log.warn("Llamada a Gemini fallo status={}", resp.statusCode());
+                String snippet = resp.body() == null ? "" : resp.body().substring(0, Math.min(280, resp.body().length()));
+                log.warn("Gemini {} status={} body={}", modelo, resp.statusCode(), snippet);
                 return Optional.empty();
             }
-            return extraerTextoGemini(resp.body()).map(this::limpiarJson);
+            Optional<String> texto = extraerTextoGemini(resp.body()).map(this::limpiarJson);
+            if (texto.isEmpty()) {
+                log.warn("Gemini {} respondió 200 pero sin texto útil", modelo);
+            }
+            return texto;
         } catch (Exception ex) {
-            log.warn("Excepcion en llamada Gemini: {}", ex.getMessage());
+            log.warn("Excepción Gemini {}: {}", modelo, ex.getMessage());
             return Optional.empty();
         }
     }
@@ -256,32 +303,61 @@ public class AiService {
 
     /* ============ 1. Triage / NLP sintomas -> ESI/MTS ============== */
     public AiTriageResponse triage(AiTriageRequest req) {
+        AiTriageResponse local = datasets.triage(req);
+        String fotoB64 = extraerBase64(req.getImagenBase64());
+        boolean hayFoto = !fotoB64.isBlank();
         final String system = """
-                Eres un asistente de lenguaje que organiza información sobre síntomas para revisión profesional.
-                No eres un servicio de urgencias ni un sistema clínico validado. No afirmes que aplicas oficialmente ESI/MTS.
-                Si no hay información suficiente, indica incertidumbre y recomienda valoración profesional.
-                Devuelve UNICAMENTE JSON con esta estructura (sin explicaciones):
-                {"severidad":"Rojo|Naranja|Amarillo|Verde|Azul","escala":"ESI/MTS 5 niveles","nivelEsi":1..5,
-                 "especialidadRecomendada":"...","prioridad":1..10,
-                 "hallazgos":["h1","h2"],"recomendaciones":"...","resumen":"2-3 oraciones"}
+                Eres un clínico virtual experto en triaje de un portal hospitalario.
+                Analiza TODO: el texto del paciente, la foto si existe y la pista de los datasets locales.
+                Debes identificar la parte del cuerpo, el tipo de molestia (dolor, hinchazón, herida, erupción, trauma, infección)
+                y la especialidad más coherente (Traumatología, Dermatología, Medicina General, Cardiología, etc.).
+                Si hay foto, DESCRÍBELA: zona, color, hinchazón, herida, moretón, pus, asimetría. Nunca digas que no hay foto.
+                No eres un servicio de urgencias validado. No inventes signos que no veas ni se mencionen.
+                Devuelve UNICAMENTE JSON con esta estructura exacta:
+                {"severidad":"Rojo|Naranja|Amarillo|Verde|Azul","escala":"ESI/MTS 5 niveles","nivelEsi":1,
+                 "especialidadRecomendada":"...","prioridad":1,
+                 "hallazgos":["h1","h2"],"recomendaciones":"...","resumen":"2-4 oraciones concretas"}
                 """;
         final String user = """
-                Analiza estos síntomas e infiere triaje clínico:
+                Paciente describe:
                 - Síntomas: %s
                 - Duración: %s
                 - Antecedentes: %s
-                - Edad paciente: %s
-                """.formatted(req.getSintomas(), nvl(req.getDuracion()), nvl(req.getAntecedentes()),
-                req.getEdadPaciente() == null ? "no informado" : req.getEdadPaciente().toString());
+                - Edad: %s
+                - Foto adjunta: %s
+                %s
+                Escribe hallazgos específicos (por ejemplo: "edema en dorso de la mano", "posible contusión") y un resumen claro.
+                """.formatted(
+                req.getSintomas(),
+                nvl(req.getDuracion()),
+                nvl(req.getAntecedentes()),
+                req.getEdadPaciente() == null ? "no informado" : req.getEdadPaciente().toString(),
+                hayFoto ? "sí, obsérvala con detalle" : "no",
+                "Referencia datasets ESI/MTS: severidad=" + local.getSeveridad()
+                        + ", ESI=" + local.getNivelEsi()
+                        + ", especialidad=" + local.getEspecialidadRecomendada()
+                        + ", hallazgos=[" + String.join("; ", nvlList(local.getHallazgos())) + "]. "
+                        + "Úsala como pista; si el texto o la foto contradicen, corrige.");
 
-        Optional<String> llm = llamarLlm(system, user);
-        if (llm.isEmpty()) return datasets.triage(req);
+        Optional<String> llm = hayFoto && hayGemini()
+                ? llamarGemini(system, user, mimeDeDataUrl(req.getImagenBase64()), fotoB64, true)
+                : llamarLlm(system, user);
+        if (llm.isEmpty()) {
+            if (hayFoto) {
+                List<String> h = new ArrayList<>(nvlList(local.getHallazgos()));
+                h.add("Gemini no respondió; se usó el dataset ESI/MTS y la foto quedó registrada.");
+                local.setHallazgos(h);
+            }
+            return local;
+        }
         try {
             AiTriageResponse r = mapper.readValue(llm.get(), AiTriageResponse.class);
             r.setModoDemo(false);
+            normalizarTriage(r, local);
             return r;
         } catch (Exception ex) {
-            return triageMock(req);
+            log.warn("No se pudo leer JSON de triage Gemini: {}", ex.getMessage());
+            return local;
         }
     }
 
@@ -318,49 +394,46 @@ public class AiService {
                 .build();
     }
 
-    /* ============ 2. Dermatología (modelo de imagen + texto) ============== */
+    /* ============ 2. Dermatología (Gemini + modelo de imagen + datasets) ============== */
     public AiDermatologiaResponse dermatologia(AiDermatologiaRequest req) {
         boolean hayImg = req.getImagenBase64() != null && !req.getImagenBase64().isBlank();
-        boolean hayTxt = req.getDescripcion() != null && !req.getDescripcion().isBlank();
+        boolean hayTxt = (req.getDescripcion() != null && !req.getDescripcion().isBlank())
+                || (req.getSintomasAsociados() != null && !req.getSintomasAsociados().isBlank());
         if (!hayImg && !hayTxt) {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.BAD_REQUEST,
                     "Describe la lesión o sube una foto de evidencia.");
         }
+        AiDermatologiaResponse local = datasets.dermatologia(req);
         final String system = """
-                Eres un asistente de lenguaje que organiza una descripción de una lesión para revisión profesional.
-                No diagnostiques de forma definitiva; destaca la incertidumbre y recomienda revisión clínica.
-                Responde SOLO JSON: {"nivelRiesgo":"BAJO|MEDIO|ALTO|CRITICO","scoreRiesgo":0.0..1.0,
+                Eres un dermatólogo y traumatólogo virtual que revisa lesiones, inflamación y fotos clínicas.
+                Analiza la foto (si existe) y el texto. Describe lo que ves: parte del cuerpo, hinchazón, color,
+                herida, moretón, erupción, calor aparente, pus, uñas, asimetría.
+                Relaciona con el dataset HAM10000 / PAD-UFES / ExtraTrees, pero corrígelo si la foto no coincide
+                (una mano hinchada no es "sin foto" ni "dermatitis inespecífica" si se ve edema o trauma).
+                No diagnostiques de forma definitiva. Responde SOLO JSON:
+                {"nivelRiesgo":"BAJO|MEDIO|ALTO|CRITICO","scoreRiesgo":0.0,
                  "diagnosticosDiferenciales":["d1","d2"],"caracteristicasObservadas":["c1","c2"],
-                 "recomendaciones":"...","advertencia":"no sustituye dermatólogo"}
+                 "recomendaciones":"...","advertencia":"No sustituye consulta presencial."}
                 """;
+        String user = userVisionPiel(req) + "\nReferencia ExtraTrees + HAM10000/PAD-UFES: riesgo="
+                + local.getNivelRiesgo() + ", score=" + local.getScoreRiesgo()
+                + ", diferenciales=[" + String.join("; ", nvlList(local.getDiagnosticosDiferenciales()))
+                + "]. Si hay foto, descríbela y corrige esta pista si no coincide.";
+        Optional<String> llm;
         if (hayImg && hayGemini()) {
-            Optional<String> vision = llamarGemini(system, userVisionPiel(req), "image/jpeg", extraerBase64(req.getImagenBase64()), true);
-            if (vision.isPresent()) {
-                try {
-                    AiDermatologiaResponse r = mapper.readValue(vision.get(), AiDermatologiaResponse.class);
-                    r.setModoDemo(false);
-                    return r;
-                } catch (Exception ignored) {
-                    /* cae al clasificador local */
-                }
-            }
+            llm = llamarGemini(system, user, mimeDeDataUrl(req.getImagenBase64()), extraerBase64(req.getImagenBase64()), true);
+        } else {
+            llm = llamarLlm(system, user);
         }
-        if (hayImg) {
-            return datasets.dermatologia(req);
-        }
-        String user = "Descripción paciente: " + nvl(req.getDescripcion()) +
-                " | Evolución: " + nvl(req.getTiempoEvolucion()) +
-                " | Síntomas asociados: " + nvl(req.getSintomasAsociados());
-
-        Optional<String> llm = llamarLlm(system, user);
-        if (llm.isEmpty()) return datasets.dermatologia(req);
+        if (llm.isEmpty()) return local;
         try {
             AiDermatologiaResponse r = mapper.readValue(llm.get(), AiDermatologiaResponse.class);
             r.setModoDemo(false);
-            return r;
+            return fusionarPiel(r, local, hayImg);
         } catch (Exception ex) {
-            return dermatologiaMock(req);
+            log.warn("No se pudo leer JSON de dermatología Gemini: {}", ex.getMessage());
+            return local;
         }
     }
 
@@ -593,16 +666,86 @@ public class AiService {
 
     private static String nvl(String s) { return s == null || s.isBlank() ? "no informado" : s; }
 
+    private static List<String> nvlList(List<String> in) {
+        return in == null ? new ArrayList<>() : new ArrayList<>(in);
+    }
+
     private static String userVisionPiel(AiDermatologiaRequest req) {
-        return "Observa la foto de la lesión y organízala para revisión profesional. " +
+        return "Observa la foto (si existe) y el relato del paciente. " +
                 "Descripción: " + nvl(req.getDescripcion()) +
                 " | Evolución: " + nvl(req.getTiempoEvolucion()) +
-                " | Síntomas asociados: " + nvl(req.getSintomasAsociados());
+                " | Síntomas asociados: " + nvl(req.getSintomasAsociados()) +
+                " | Foto: " + ((req.getImagenBase64() == null || req.getImagenBase64().isBlank())
+                ? "no adjunta" : "adjunta, analízala pixel a pixel");
     }
 
     private static String extraerBase64(String dataUrl) {
         if (dataUrl == null) return "";
         int coma = dataUrl.indexOf(',');
         return coma >= 0 ? dataUrl.substring(coma + 1) : dataUrl;
+    }
+
+    private static String mimeDeDataUrl(String dataUrl) {
+        if (dataUrl == null) return "image/jpeg";
+        String t = dataUrl.toLowerCase();
+        if (t.startsWith("data:image/png")) return "image/png";
+        if (t.startsWith("data:image/webp")) return "image/webp";
+        if (t.startsWith("data:image/gif")) return "image/gif";
+        return "image/jpeg";
+    }
+
+    private static void normalizarTriage(AiTriageResponse r, AiTriageResponse local) {
+        if (r.getHallazgos() == null || r.getHallazgos().isEmpty()) {
+            r.setHallazgos(nvlList(local.getHallazgos()));
+        } else {
+            List<String> h = nvlList(r.getHallazgos());
+            h.add(0, "Análisis Gemini + datasets ESI/MTS.");
+            r.setHallazgos(h);
+        }
+        if (r.getEspecialidadRecomendada() == null || r.getEspecialidadRecomendada().isBlank()) {
+            r.setEspecialidadRecomendada(local.getEspecialidadRecomendada());
+        }
+        if (r.getSeveridad() == null || r.getSeveridad().isBlank()) r.setSeveridad(local.getSeveridad());
+        else r.setSeveridad(capitalizarSeveridad(r.getSeveridad()));
+        if (r.getNivelEsi() == null) r.setNivelEsi(local.getNivelEsi());
+        if (r.getPrioridad() == null) r.setPrioridad(local.getPrioridad());
+        if (r.getEscala() == null || r.getEscala().isBlank()) r.setEscala("ESI/MTS 5 niveles + Gemini");
+        if (r.getResumen() == null || r.getResumen().isBlank()) r.setResumen(local.getResumen());
+    }
+
+    private static String capitalizarSeveridad(String s) {
+        String t = s.trim().toLowerCase();
+        if (t.contains("rojo")) return "Rojo";
+        if (t.contains("naranja")) return "Naranja";
+        if (t.contains("amarillo")) return "Amarillo";
+        if (t.contains("azul")) return "Azul";
+        if (t.contains("verde")) return "Verde";
+        return s;
+    }
+
+    private static AiDermatologiaResponse fusionarPiel(AiDermatologiaResponse gemini, AiDermatologiaResponse local, boolean hayImg) {
+        List<String> car = nvlList(gemini.getCaracteristicasObservadas());
+        if (car.stream().noneMatch(c -> c.toLowerCase().contains("gemini"))) {
+            car.add(0, hayImg
+                    ? "Gemini analizó la foto junto con el texto y los datasets de piel."
+                    : "Gemini analizó el texto con apoyo de HAM10000 / PAD-UFES.");
+        }
+        for (String c : nvlList(local.getCaracteristicasObservadas())) {
+            if (car.stream().noneMatch(x -> x.equalsIgnoreCase(c))) car.add(c);
+        }
+        gemini.setCaracteristicasObservadas(car);
+        List<String> dx = nvlList(gemini.getDiagnosticosDiferenciales());
+        if (dx.isEmpty()) dx.addAll(nvlList(local.getDiagnosticosDiferenciales()));
+        gemini.setDiagnosticosDiferenciales(dx);
+        if (gemini.getNivelRiesgo() == null || gemini.getNivelRiesgo().isBlank()) {
+            gemini.setNivelRiesgo(local.getNivelRiesgo());
+        } else {
+            gemini.setNivelRiesgo(gemini.getNivelRiesgo().trim().toUpperCase());
+        }
+        if (gemini.getScoreRiesgo() == null) gemini.setScoreRiesgo(local.getScoreRiesgo());
+        if (gemini.getAdvertencia() == null || gemini.getAdvertencia().isBlank()) {
+            gemini.setAdvertencia("Orientación automática. No sustituye consulta presencial.");
+        }
+        return gemini;
     }
 }

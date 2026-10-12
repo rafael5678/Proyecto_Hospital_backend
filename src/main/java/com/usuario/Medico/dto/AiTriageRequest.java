@@ -20,4 +20,7 @@ public class AiTriageRequest {
     private String antecedentes;
 
     private Integer edadPaciente;
+
+    /** Foto clínica opcional (data URL o base64) para que Gemini vea la zona afectada. */
+    private String imagenBase64;
 }

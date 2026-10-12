@@ -60,5 +60,3 @@ public class PacienteController {
         return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 }
-
-// Documentación interna: Gestiona consultas del perfil e historial del paciente.

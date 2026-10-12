@@ -29,5 +29,3 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request));
     }
 }
-
-// Documentación interna: Maneja peticiones de login y registro emitiendo tokens seguros.

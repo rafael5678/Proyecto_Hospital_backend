@@ -34,5 +34,3 @@ public class Horario {
     @Builder.Default
     private Boolean disponible = true;
 }
-
-// Mapeo JPA: Define los bloques de disponibilidad por día de la semana y rango de horas.

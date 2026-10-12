@@ -35,6 +35,7 @@ public class DataInitializer implements CommandLineRunner {
         asegurarMedicoDemo();
         asegurarMedico("neurologia@hospy.com", "Dra. Ana López", "Neurología", "MED-2024-002");
         asegurarMedico("dermatologia@hospy.com", "Dr. Carlos Pérez", "Dermatología", "MED-2024-003");
+        asegurarMedico("traumatologia@hospy.com", "Dr. Andrés Molina", "Traumatología", "MED-2024-004");
         asegurarPacienteDemo("pedro@hospy.com", "Pedro Paciente", "123456");
         asegurarPacienteDemo("paciente@hospy.com", "Juan Reyes", "Paciente123");
     }

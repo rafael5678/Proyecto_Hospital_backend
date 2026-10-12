@@ -295,5 +295,3 @@ public class CitaService {
                 .orElseThrow(() -> new RuntimeException("Cita no encontrada"));
     }
 }
-
-// Documentación de soporte CitaService: Gestiona asignación de médicos según especialidad requerida y control de estados.

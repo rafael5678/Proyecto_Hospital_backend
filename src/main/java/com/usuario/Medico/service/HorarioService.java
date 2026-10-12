@@ -77,5 +77,3 @@ public class HorarioService {
                 .build();
     }
 }
-
-// Documentación de soporte HorarioService: Asegura la integridad temporal de la agenda de médicos registrados.
