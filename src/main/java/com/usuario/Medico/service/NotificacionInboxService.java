@@ -30,9 +30,6 @@ public class NotificacionInboxService {
 
     @Transactional
     public void crear(Usuario usuario, String titulo, String mensaje, String tipo, Long citaId) {
-        if (citaId != null && notificacionRepository.existsByCitaIdAndTipo(citaId, tipo)) {
-            return;
-        }
         notificacionRepository.save(Notificacion.builder()
                 .usuario(usuario)
                 .titulo(titulo)

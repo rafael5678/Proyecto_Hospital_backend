@@ -45,6 +45,8 @@ public class NotificacionCitaService {
 
         inbox.crearParaEmail(cita.getPaciente().getUsuario().getEmail(), asunto, textoPaciente,
                 "CITA_CAMBIO", cita.getId());
+        inbox.crearParaEmail(cita.getMedico().getUsuario().getEmail(), "Cambio en una cita", textoMedico,
+                "CITA_CAMBIO", cita.getId());
         boolean paciente = enviar(cita.getPaciente().getUsuario().getEmail(), asunto, textoPaciente);
         boolean medico = enviar(cita.getMedico().getUsuario().getEmail(), asunto, textoMedico);
         return new ResultadoNotificacion(paciente, medico);
@@ -89,6 +91,24 @@ public class NotificacionCitaService {
         inbox.crearParaEmail(cita.getPaciente().getUsuario().getEmail(), asunto, texto,
                 "CITA_RECHAZADA", cita.getId());
         return enviar(cita.getPaciente().getUsuario().getEmail(), asunto, texto);
+    }
+
+    public boolean notificarCitaCancelada(Cita cita) {
+        String asuntoMedico = "El paciente canceló una cita";
+        String textoMedico = "Hola " + cita.getMedico().getUsuario().getNombre() + ",\n\n" +
+                cita.getPaciente().getUsuario().getNombre() + " canceló la cita del " +
+                FORMATO.format(cita.getFechaHora()) + " (" + cita.getMedico().getEspecialidad() + ").\n\n" +
+                "El cupo quedó libre en tu agenda.\n\n— Equipo Hospy";
+        String asuntoPaciente = "Cancelaste tu cita";
+        String textoPaciente = "Hola " + cita.getPaciente().getUsuario().getNombre() + ",\n\n" +
+                "Confirmamos la cancelación de tu cita del " + FORMATO.format(cita.getFechaHora()) +
+                " con " + cita.getMedico().getUsuario().getNombre() + ".\n\n— Equipo Hospy";
+        inbox.crearParaEmail(cita.getMedico().getUsuario().getEmail(), asuntoMedico, textoMedico,
+                "CITA_CANCELADA", cita.getId());
+        inbox.crearParaEmail(cita.getPaciente().getUsuario().getEmail(), asuntoPaciente, textoPaciente,
+                "CITA_CANCELADA", cita.getId());
+        enviar(cita.getPaciente().getUsuario().getEmail(), asuntoPaciente, textoPaciente);
+        return enviar(cita.getMedico().getUsuario().getEmail(), asuntoMedico, textoMedico);
     }
 
     private static String nvl(String s) { return s == null || s.isBlank() ? "no informado" : s; }

@@ -282,6 +282,7 @@ public class CitaService {
                 notificacion.medicoEnviado(), mensaje);
     }
 
+    @Transactional
     public CitaResponse cancelar(Long id, String emailPaciente) {
         Cita cita = buscar(id);
         if (!cita.getPaciente().getUsuario().getEmail().equals(emailPaciente)) {
@@ -291,7 +292,9 @@ public class CitaService {
             throw new RuntimeException("La cita no puede cancelarse");
         }
         cita.setEstado(EstadoCita.CANCELADA);
-        return CitaMapper.toDto(citaRepository.save(cita));
+        Cita guardada = citaRepository.save(cita);
+        notificacionCitaService.notificarCitaCancelada(guardada);
+        return CitaMapper.toDto(guardada);
     }
 
     @Transactional
