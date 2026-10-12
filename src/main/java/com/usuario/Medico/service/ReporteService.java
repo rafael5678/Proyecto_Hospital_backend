@@ -44,7 +44,7 @@ public class ReporteService {
                 .build();
     }
 
-    public AiMetricasResponse generarMetricasIA(boolean apiKeyActiva) {
+    public AiMetricasResponse generarMetricasIA(boolean apiKeyActiva, String versionIa, String estadoTranscripcion) {
         long totalCitas = citaRepository.count();
         long citasConTriage = citaRepository.countConTriage();
         long citasConPiel = citaRepository.countConEvaluacionPiel();
@@ -72,13 +72,13 @@ public class ReporteService {
                 .citasReprogramadasPorIA(reprogramadasIA)
                 .distribucionSeveridad(distribucion)
                 .apiKeyActiva(apiKeyActiva)
-                .versionIa("Hospy AI v2.0 — LLM + Whisper + NER SOAP")
-                .estadoWhisper(apiKeyActiva ? "Operativo" : "Demo (navegador Web Speech API)")
-                .estadoSoap(apiKeyActiva ? "Operativo — LLM genera borrador SOAP" : "Demo — plantilla local")
-                .estadoTriage(apiKeyActiva ? "Operativo — análisis NLP" : "Demo — reglas de palabra clave")
-                .estadoDermatologia(apiKeyActiva ? "Operativo — análisis textual LLM" : "Demo — clasificación por texto")
-                .estadoInteracciones(apiKeyActiva ? "Operativo — LLM revisa interacciones" : "Demo — reglas predefinidas")
-                .estadoPrecios(apiKeyActiva ? "Operativo — estimación LLM" : "Demo — precios simulados")
+                .versionIa(versionIa)
+                .estadoWhisper(estadoTranscripcion)
+                .estadoSoap(apiKeyActiva ? "Operativo — Gemini/LLM genera borrador SOAP" : "Demo — plantilla local")
+                .estadoTriage(apiKeyActiva ? "Operativo — análisis Gemini/NLP" : "Demo — reglas de palabra clave")
+                .estadoDermatologia(apiKeyActiva ? "Operativo — Gemini visión + clasificador local" : "Demo — clasificación por texto")
+                .estadoInteracciones(apiKeyActiva ? "Operativo — Gemini revisa interacciones" : "Demo — reglas predefinidas")
+                .estadoPrecios(apiKeyActiva ? "Operativo — estimación Gemini" : "Demo — precios simulados")
                 .timeoutMedicoSeg(300)
                 .timeoutAdminSeg(600)
                 .build();
@@ -104,5 +104,3 @@ public class ReporteService {
         return nombres[mes];
     }
 }
-
-// Documentación de soporte ReporteService: Consolida métricas hospitalarias para paneles de control y supervisión.

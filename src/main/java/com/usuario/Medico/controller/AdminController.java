@@ -89,8 +89,7 @@ public class AdminController {
 
     @GetMapping("/ai-metricas")
     public ResponseEntity<AiMetricasResponse> aiMetricas() {
-        return ResponseEntity.ok(reporteService.generarMetricasIA(aiService.hayApiKey()));
+        return ResponseEntity.ok(reporteService.generarMetricasIA(
+                aiService.hayApiKey(), aiService.versionIa(), aiService.estadoTranscripcion()));
     }
 }
-
-// Documentación interna: Controlador administrativo para auditoría y actualización de cuentas activas.

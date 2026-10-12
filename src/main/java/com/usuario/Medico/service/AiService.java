@@ -15,6 +15,8 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.UUID;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +28,16 @@ public class AiService {
 
     public static final String MODO_DEMO_SIN_API_KEY =
             "MODO DEMO: Este resultado es una simulación educativa. " +
-                "Configura OPENAI_API_KEY para solicitar una respuesta al proveedor de lenguaje configurado.";
+                "Configura GEMINI_API_KEY para usar Gemini en triage, SOAP, voz y farmacia.";
+
+    @Value("${ai.gemini.api-key:}")
+    private String geminiKey;
+
+    @Value("${ai.gemini.model:gemini-2.0-flash}")
+    private String geminiModel;
+
+    @Value("${ai.gemini.url:https://generativelanguage.googleapis.com/v1beta/models}")
+    private String geminiBaseUrl;
 
     @Value("${ai.openai.api-key:}")
     private String apiKey;
@@ -56,12 +67,40 @@ public class AiService {
     }
 
     public boolean hayApiKey() {
+        return hayGemini() || hayOpenAi();
+    }
+
+    public boolean hayGemini() {
+        return geminiKey != null && !geminiKey.isBlank();
+    }
+
+    public boolean hayOpenAi() {
         return apiKey != null && !apiKey.isBlank();
     }
 
+    public String versionIa() {
+        if (hayGemini()) return "Hospy AI — Gemini (" + geminiModel + ")";
+        if (hayOpenAi()) return "Hospy AI — OpenAI (" + model + ")";
+        return "Hospy AI — modo demo local";
+    }
+
+    public String estadoTranscripcion() {
+        if (hayGemini()) return "Operativo — Gemini Audio";
+        if (hayOpenAi()) return "Operativo — Whisper";
+        return "Demo (navegador Web Speech API)";
+    }
+
     public AiTranscripcionResponse transcribir(byte[] audio, String contentType) {
-        if (!hayApiKey()) {
-            return new AiTranscripcionResponse("", true, "Configura OPENAI_API_KEY para transcribir el audio con Whisper.");
+        if (hayGemini()) {
+            Optional<String> gemini = transcribirConGemini(audio, contentType);
+            if (gemini.isPresent() && !gemini.get().isBlank()) {
+                return new AiTranscripcionResponse(gemini.get().trim(), false,
+                        "Transcripción Gemini lista para revisión médica.");
+            }
+        }
+        if (!hayOpenAi()) {
+            return new AiTranscripcionResponse("", true,
+                    "Configura GEMINI_API_KEY para transcribir el audio. También puedes usar la voz del navegador.");
         }
         String boundary = "HospyBoundary" + UUID.randomUUID();
         try {
@@ -102,9 +141,17 @@ public class AiService {
                 valor + "\r\n").getBytes(StandardCharsets.UTF_8));
     }
 
-    /* ============ Llamada genérica al LLM ============== */
+    /* ============ Llamada genérica al LLM (Gemini primero, OpenAI de respaldo) ============== */
     private Optional<String> llamarLlm(String systemPrompt, String userPrompt) {
-        if (!hayApiKey()) return Optional.empty();
+        if (hayGemini()) {
+            Optional<String> gemini = llamarGemini(systemPrompt, userPrompt, null, null, true);
+            if (gemini.isPresent()) return gemini;
+        }
+        if (hayOpenAi()) return llamarOpenAi(systemPrompt, userPrompt);
+        return Optional.empty();
+    }
+
+    private Optional<String> llamarOpenAi(String systemPrompt, String userPrompt) {
         try {
             Map<String, Object> body = Map.of(
                     "model", model,
@@ -126,16 +173,85 @@ public class AiService {
 
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (resp.statusCode() != 200) {
-                log.warn("Llamada a IA fallo status={}, body={}", resp.statusCode(), resp.body());
+                log.warn("Llamada a OpenAI fallo status={}", resp.statusCode());
                 return Optional.empty();
             }
             JsonNode root = mapper.readTree(resp.body());
             String content = root.path("choices").get(0).path("message").path("content").asText();
-            return Optional.of(content);
+            return Optional.ofNullable(limpiarJson(content));
         } catch (Exception ex) {
-            log.warn("Excepcion en llamada IA: {}", ex.getMessage());
+            log.warn("Excepcion en llamada OpenAI: {}", ex.getMessage());
             return Optional.empty();
         }
+    }
+
+    private Optional<String> llamarGemini(String systemPrompt, String userPrompt, String mimeType, String base64, boolean json) {
+        try {
+            List<Map<String, Object>> parts = new ArrayList<>();
+            parts.add(Map.of("text", userPrompt));
+            if (base64 != null && !base64.isBlank() && mimeType != null) {
+                parts.add(Map.of("inlineData", Map.of("mimeType", mimeType, "data", base64)));
+            }
+            Map<String, Object> body = new LinkedHashMap<>();
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                body.put("systemInstruction", Map.of("parts", List.of(Map.of("text", systemPrompt))));
+            }
+            body.put("contents", List.of(Map.of("role", "user", "parts", parts)));
+            Map<String, Object> gen = new LinkedHashMap<>();
+            gen.put("temperature", 0.1);
+            if (json) {
+                gen.put("responseMimeType", "application/json");
+            }
+            body.put("generationConfig", gen);
+
+            String url = geminiBaseUrl + "/" + geminiModel + ":generateContent?key=" + geminiKey;
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(timeout))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200) {
+                log.warn("Llamada a Gemini fallo status={}", resp.statusCode());
+                return Optional.empty();
+            }
+            return extraerTextoGemini(resp.body()).map(this::limpiarJson);
+        } catch (Exception ex) {
+            log.warn("Excepcion en llamada Gemini: {}", ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Optional<String> transcribirConGemini(byte[] audio, String contentType) {
+        String mime = (contentType == null || contentType.isBlank()) ? "audio/webm" : contentType.split(";")[0].trim();
+        String prompt = "Transcribe fielmente este audio clínico en español. Devuelve solo el texto hablado, sin comentarios.";
+        return llamarGemini(prompt, "Transcribe el audio.", mime, Base64.getEncoder().encodeToString(audio), false);
+    }
+
+    private Optional<String> extraerTextoGemini(String raw) {
+        try {
+            JsonNode root = mapper.readTree(raw);
+            JsonNode parts = root.path("candidates").path(0).path("content").path("parts");
+            if (!parts.isArray() || parts.isEmpty()) return Optional.empty();
+            StringBuilder texto = new StringBuilder();
+            for (JsonNode part : parts) {
+                String t = part.path("text").asText("");
+                if (!t.isBlank()) texto.append(t);
+            }
+            return texto.isEmpty() ? Optional.empty() : Optional.of(texto.toString());
+        } catch (Exception ex) {
+            return Optional.empty();
+        }
+    }
+
+    private String limpiarJson(String content) {
+        if (content == null) return "";
+        String t = content.trim();
+        if (t.startsWith("```")) {
+            t = t.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
+        }
+        return t.trim();
     }
 
     /* ============ 1. Triage / NLP sintomas -> ESI/MTS ============== */
@@ -211,17 +327,28 @@ public class AiService {
                     org.springframework.http.HttpStatus.BAD_REQUEST,
                     "Describe la lesión o sube una foto de evidencia.");
         }
-        if (hayImg) {
-            return datasets.dermatologia(req);
-        }
         final String system = """
-                Eres un asistente de lenguaje que organiza una descripción textual de una lesión para revisión profesional.
-                No procesas imágenes, no eres una CNN y no debes afirmar características visuales no descritas por el usuario.
-                No diagnostiques; destaca la incertidumbre y recomienda revisión clínica.
+                Eres un asistente de lenguaje que organiza una descripción de una lesión para revisión profesional.
+                No diagnostiques de forma definitiva; destaca la incertidumbre y recomienda revisión clínica.
                 Responde SOLO JSON: {"nivelRiesgo":"BAJO|MEDIO|ALTO|CRITICO","scoreRiesgo":0.0..1.0,
                  "diagnosticosDiferenciales":["d1","d2"],"caracteristicasObservadas":["c1","c2"],
                  "recomendaciones":"...","advertencia":"no sustituye dermatólogo"}
                 """;
+        if (hayImg && hayGemini()) {
+            Optional<String> vision = llamarGemini(system, userVisionPiel(req), "image/jpeg", extraerBase64(req.getImagenBase64()), true);
+            if (vision.isPresent()) {
+                try {
+                    AiDermatologiaResponse r = mapper.readValue(vision.get(), AiDermatologiaResponse.class);
+                    r.setModoDemo(false);
+                    return r;
+                } catch (Exception ignored) {
+                    /* cae al clasificador local */
+                }
+            }
+        }
+        if (hayImg) {
+            return datasets.dermatologia(req);
+        }
         String user = "Descripción paciente: " + nvl(req.getDescripcion()) +
                 " | Evolución: " + nvl(req.getTiempoEvolucion()) +
                 " | Síntomas asociados: " + nvl(req.getSintomasAsociados());
@@ -465,6 +592,17 @@ public class AiService {
     }
 
     private static String nvl(String s) { return s == null || s.isBlank() ? "no informado" : s; }
-}
 
-// Documentación de soporte AiService: Provee inferencia para categorización ESI y soporte a diagnóstico dermatológico.
+    private static String userVisionPiel(AiDermatologiaRequest req) {
+        return "Observa la foto de la lesión y organízala para revisión profesional. " +
+                "Descripción: " + nvl(req.getDescripcion()) +
+                " | Evolución: " + nvl(req.getTiempoEvolucion()) +
+                " | Síntomas asociados: " + nvl(req.getSintomasAsociados());
+    }
+
+    private static String extraerBase64(String dataUrl) {
+        if (dataUrl == null) return "";
+        int coma = dataUrl.indexOf(',');
+        return coma >= 0 ? dataUrl.substring(coma + 1) : dataUrl;
+    }
+}

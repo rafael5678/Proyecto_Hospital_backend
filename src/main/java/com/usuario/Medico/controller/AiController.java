@@ -24,7 +24,7 @@ public class AiController {
     public ResponseEntity<AiStatusResponse> status() {
         return ResponseEntity.ok(new AiStatusResponse(
                 aiService.hayApiKey(),
-                "Hospy AI — asistente de lenguaje y transcripción Whisper; requiere revisión profesional"
+                aiService.versionIa() + "; requiere revisión profesional"
         ));
     }
 
