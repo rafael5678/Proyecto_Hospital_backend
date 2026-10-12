@@ -19,6 +19,9 @@ public class AiDermatologiaResponse {
 
     private Double scoreRiesgo;
 
+    /** Texto clínico para el paciente: por qué ese nivel, sin jerga de datasets. */
+    private String explicacion;
+
     private List<String> diagnosticosDiferenciales;
 
     private List<String> caracteristicasObservadas;

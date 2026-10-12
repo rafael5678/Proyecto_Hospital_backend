@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.usuario.Medico.dto.*;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -77,6 +78,11 @@ public class AiService {
 
     public boolean hayGemini() {
         return geminiKey != null && !geminiKey.isBlank();
+    }
+
+    @PostConstruct
+    void logEstadoGemini() {
+        log.info("Gemini: {} modelo={}", hayGemini() ? "clave presente" : "SIN CLAVE", geminiModel);
     }
 
     public boolean hayOpenAi() {
@@ -307,16 +313,14 @@ public class AiService {
         String fotoB64 = extraerBase64(req.getImagenBase64());
         boolean hayFoto = !fotoB64.isBlank();
         final String system = """
-                Eres un clínico virtual experto en triaje de un portal hospitalario.
-                Analiza TODO: el texto del paciente, la foto si existe y la pista de los datasets locales.
-                Debes identificar la parte del cuerpo, el tipo de molestia (dolor, hinchazón, herida, erupción, trauma, infección)
-                y la especialidad más coherente (Traumatología, Dermatología, Medicina General, Cardiología, etc.).
-                Si hay foto, DESCRÍBELA: zona, color, hinchazón, herida, moretón, pus, asimetría. Nunca digas que no hay foto.
-                No eres un servicio de urgencias validado. No inventes signos que no veas ni se mencionen.
-                Devuelve UNICAMENTE JSON con esta estructura exacta:
-                {"severidad":"Rojo|Naranja|Amarillo|Verde|Azul","escala":"ESI/MTS 5 niveles","nivelEsi":1,
+                Eres un clínico experto. Usa TODO tu conocimiento médico, no solo la pista interna.
+                Analiza el relato y la foto si existe. Identifica zona, tipo de molestia y especialidad.
+                NUNCA menciones datasets, modelos, ExtraTrees, HAM10000, ESI, MedQA, Hugging Face ni precisión.
+                El paciente solo debe ver severidad y el porqué clínico.
+                Devuelve UNICAMENTE JSON:
+                {"severidad":"Rojo|Naranja|Amarillo|Verde|Azul","escala":"orientación 5 niveles","nivelEsi":1,
                  "especialidadRecomendada":"...","prioridad":1,
-                 "hallazgos":["h1","h2"],"recomendaciones":"...","resumen":"2-4 oraciones concretas"}
+                 "hallazgos":[],"recomendaciones":"...","resumen":"2-4 oraciones: qué pasa y por qué ese nivel"}
                 """;
         final String user = """
                 Paciente describe:
@@ -325,39 +329,27 @@ public class AiService {
                 - Antecedentes: %s
                 - Edad: %s
                 - Foto adjunta: %s
-                %s
-                Escribe hallazgos específicos (por ejemplo: "edema en dorso de la mano", "posible contusión") y un resumen claro.
+                Pista interna (no la cites): severidad=%s, especialidad=%s.
+                Escribe un resumen humano: qué ves o infieres y por qué esa severidad.
                 """.formatted(
                 req.getSintomas(),
                 nvl(req.getDuracion()),
                 nvl(req.getAntecedentes()),
                 req.getEdadPaciente() == null ? "no informado" : req.getEdadPaciente().toString(),
                 hayFoto ? "sí, obsérvala con detalle" : "no",
-                "Referencia datasets ESI/MTS: severidad=" + local.getSeveridad()
-                        + ", ESI=" + local.getNivelEsi()
-                        + ", especialidad=" + local.getEspecialidadRecomendada()
-                        + ", hallazgos=[" + String.join("; ", nvlList(local.getHallazgos())) + "]. "
-                        + "Úsala como pista; si el texto o la foto contradicen, corrige.");
+                local.getSeveridad(),
+                local.getEspecialidadRecomendada());
 
-        Optional<String> llm = hayFoto && hayGemini()
-                ? llamarGemini(system, user, mimeDeDataUrl(req.getImagenBase64()), fotoB64, true)
-                : llamarLlm(system, user);
-        if (llm.isEmpty()) {
-            if (hayFoto) {
-                List<String> h = new ArrayList<>(nvlList(local.getHallazgos()));
-                h.add("Gemini no respondió; se usó el dataset ESI/MTS y la foto quedó registrada.");
-                local.setHallazgos(h);
-            }
-            return local;
-        }
+        Optional<String> llm = consultarGemini(system, user, req.getImagenBase64());
+        if (llm.isEmpty()) return limpiarTriage(local, req.getSintomas());
         try {
             AiTriageResponse r = mapper.readValue(llm.get(), AiTriageResponse.class);
             r.setModoDemo(false);
             normalizarTriage(r, local);
-            return r;
+            return limpiarTriage(r, req.getSintomas());
         } catch (Exception ex) {
             log.warn("No se pudo leer JSON de triage Gemini: {}", ex.getMessage());
-            return local;
+            return limpiarTriage(local, req.getSintomas());
         }
     }
 
@@ -406,34 +398,26 @@ public class AiService {
         }
         AiDermatologiaResponse local = datasets.dermatologia(req);
         final String system = """
-                Eres un dermatólogo y traumatólogo virtual que revisa lesiones, inflamación y fotos clínicas.
-                Analiza la foto (si existe) y el texto. Describe lo que ves: parte del cuerpo, hinchazón, color,
-                herida, moretón, erupción, calor aparente, pus, uñas, asimetría.
-                Relaciona con el dataset HAM10000 / PAD-UFES / ExtraTrees, pero corrígelo si la foto no coincide
-                (una mano hinchada no es "sin foto" ni "dermatitis inespecífica" si se ve edema o trauma).
-                No diagnostiques de forma definitiva. Responde SOLO JSON:
+                Eres un médico experto en piel, infección y trauma. Usa TODO tu conocimiento, no solo la pista interna.
+                Mira la foto y el relato. Di qué tan alto es el riesgo y POR QUÉ (color, hinchazón, herida, pus, dolor).
+                NUNCA menciones datasets, modelos, ExtraTrees, HAM10000, precisión, bosqué ni Hugging Face.
+                No listes porcentajes de un clasificador. Responde SOLO JSON:
                 {"nivelRiesgo":"BAJO|MEDIO|ALTO|CRITICO","scoreRiesgo":0.0,
-                 "diagnosticosDiferenciales":["d1","d2"],"caracteristicasObservadas":["c1","c2"],
-                 "recomendaciones":"...","advertencia":"No sustituye consulta presencial."}
+                 "explicacion":"2-4 oraciones claras: qué ves y por qué ese nivel",
+                 "diagnosticosDiferenciales":[],"caracteristicasObservadas":[],
+                 "recomendaciones":"","advertencia":""}
                 """;
-        String user = userVisionPiel(req) + "\nReferencia ExtraTrees + HAM10000/PAD-UFES: riesgo="
-                + local.getNivelRiesgo() + ", score=" + local.getScoreRiesgo()
-                + ", diferenciales=[" + String.join("; ", nvlList(local.getDiagnosticosDiferenciales()))
-                + "]. Si hay foto, descríbela y corrige esta pista si no coincide.";
-        Optional<String> llm;
-        if (hayImg && hayGemini()) {
-            llm = llamarGemini(system, user, mimeDeDataUrl(req.getImagenBase64()), extraerBase64(req.getImagenBase64()), true);
-        } else {
-            llm = llamarLlm(system, user);
-        }
-        if (llm.isEmpty()) return local;
+        String user = userVisionPiel(req) + "\nPista interna (no la cites): riesgo="
+                + local.getNivelRiesgo() + ". Usa tu criterio si la foto o el texto dicen otra cosa.";
+        Optional<String> llm = consultarGemini(system, user, req.getImagenBase64());
+        if (llm.isEmpty()) return limpiarPiel(local, req);
         try {
             AiDermatologiaResponse r = mapper.readValue(llm.get(), AiDermatologiaResponse.class);
             r.setModoDemo(false);
-            return fusionarPiel(r, local, hayImg);
+            return limpiarPiel(fusionarPiel(r, local), req);
         } catch (Exception ex) {
             log.warn("No se pudo leer JSON de dermatología Gemini: {}", ex.getMessage());
-            return local;
+            return limpiarPiel(local, req);
         }
     }
 
@@ -756,14 +740,76 @@ public class AiService {
         return "image/jpeg";
     }
 
-    private static void normalizarTriage(AiTriageResponse r, AiTriageResponse local) {
-        if (r.getHallazgos() == null || r.getHallazgos().isEmpty()) {
-            r.setHallazgos(nvlList(local.getHallazgos()));
-        } else {
-            List<String> h = nvlList(r.getHallazgos());
-            h.add(0, "Análisis Gemini + datasets ESI/MTS.");
-            r.setHallazgos(h);
+    private Optional<String> consultarGemini(String system, String user, String imagenDataUrl) {
+        String b64 = extraerBase64(imagenDataUrl);
+        if (!b64.isBlank() && hayGemini()) {
+            Optional<String> vision = llamarGemini(system, user, mimeDeDataUrl(imagenDataUrl), b64, true);
+            if (vision.isPresent()) return vision;
         }
+        return llamarLlm(system, user);
+    }
+
+    private static boolean esJergaTecnica(String s) {
+        if (s == null) return false;
+        String t = s.toLowerCase();
+        return t.contains("dataset") || t.contains("ham10000") || t.contains("pad-ufes")
+                || t.contains("extratrees") || t.contains("medmcqa") || t.contains("medqa")
+                || t.contains("hugging") || t.contains("esi/mts") || t.contains("modelo local")
+                || t.contains("precisión de prueba") || t.contains("bosque") || t.contains("extra trees")
+                || t.contains("etiquetas tipo") || t.contains("clasificador") || t.contains("gemini no");
+    }
+
+    private static List<String> sinJerga(List<String> in) {
+        List<String> out = new ArrayList<>();
+        for (String s : nvlList(in)) {
+            if (!s.isBlank() && !esJergaTecnica(s)) out.add(s);
+        }
+        return out;
+    }
+
+    private static AiTriageResponse limpiarTriage(AiTriageResponse r, String sintomas) {
+        r.setHallazgos(sinJerga(r.getHallazgos()));
+        r.setEscala("Orientación clínica");
+        if (r.getResumen() == null || r.getResumen().isBlank() || esJergaTecnica(r.getResumen())) {
+            String sev = r.getSeveridad() == null ? "Verde" : r.getSeveridad();
+            String esp = r.getEspecialidadRecomendada() == null ? "Medicina General" : r.getEspecialidadRecomendada();
+            r.setResumen("Severidad " + sev + " hacia " + esp + " por lo que describes"
+                    + (sintomas == null || sintomas.isBlank() ? "." : ": " + sintomas.trim() + "."));
+        }
+        if (r.getRecomendaciones() != null && esJergaTecnica(r.getRecomendaciones())) {
+            r.setRecomendaciones("Si empeora, hay fiebre o el dolor es intenso, consulta de forma presencial.");
+        }
+        return r;
+    }
+
+    private static AiDermatologiaResponse limpiarPiel(AiDermatologiaResponse r, AiDermatologiaRequest req) {
+        if (r.getNivelRiesgo() != null) r.setNivelRiesgo(r.getNivelRiesgo().trim().toUpperCase());
+        r.setCaracteristicasObservadas(List.of());
+        r.setDiagnosticosDiferenciales(List.of());
+        r.setAdvertencia(null);
+        r.setRecomendaciones(null);
+        if (r.getExplicacion() == null || r.getExplicacion().isBlank() || esJergaTecnica(r.getExplicacion())) {
+            r.setExplicacion(explicacionPiel(r.getNivelRiesgo(), req));
+        }
+        return r;
+    }
+
+    private static String explicacionPiel(String nivel, AiDermatologiaRequest req) {
+        String n = nivel == null ? "MEDIO" : nivel.toUpperCase();
+        String porque = switch (n) {
+            case "CRITICO" -> "Hay signos de alarma (dolor fuerte, extensión rápida o posible infección grave). Hay que valorarlo ya.";
+            case "ALTO" -> "La zona se ve inflamada o alterada de forma importante. Puede ser infección o lesión que no debe esperarse.";
+            case "MEDIO" -> "Hay un cambio en la piel que conviene revisar, aunque no parece una emergencia inmediata.";
+            default -> "El cambio parece leve. Vigílalo y consulta si empeora, hay fiebre o el dolor aumenta.";
+        };
+        String relato = (nvl(req.getDescripcion()).equals("no informado") ? "" : req.getDescripcion().trim());
+        if (relato.isBlank() && req.getSintomasAsociados() != null) relato = req.getSintomasAsociados().trim();
+        if (!relato.isBlank()) return porque + " Relato: " + relato + ".";
+        return porque;
+    }
+
+    private static void normalizarTriage(AiTriageResponse r, AiTriageResponse local) {
+        r.setHallazgos(sinJerga(r.getHallazgos()));
         if (r.getEspecialidadRecomendada() == null || r.getEspecialidadRecomendada().isBlank()) {
             r.setEspecialidadRecomendada(local.getEspecialidadRecomendada());
         }
@@ -771,8 +817,12 @@ public class AiService {
         else r.setSeveridad(capitalizarSeveridad(r.getSeveridad()));
         if (r.getNivelEsi() == null) r.setNivelEsi(local.getNivelEsi());
         if (r.getPrioridad() == null) r.setPrioridad(local.getPrioridad());
-        if (r.getEscala() == null || r.getEscala().isBlank()) r.setEscala("ESI/MTS 5 niveles + Gemini");
-        if (r.getResumen() == null || r.getResumen().isBlank()) r.setResumen(local.getResumen());
+        if (r.getEscala() == null || r.getEscala().isBlank() || esJergaTecnica(r.getEscala())) {
+            r.setEscala("Orientación clínica");
+        }
+        if (r.getResumen() == null || r.getResumen().isBlank() || esJergaTecnica(r.getResumen())) {
+            r.setResumen(local.getResumen());
+        }
     }
 
     private static String capitalizarSeveridad(String s) {
@@ -785,28 +835,15 @@ public class AiService {
         return s;
     }
 
-    private static AiDermatologiaResponse fusionarPiel(AiDermatologiaResponse gemini, AiDermatologiaResponse local, boolean hayImg) {
-        List<String> car = nvlList(gemini.getCaracteristicasObservadas());
-        if (car.stream().noneMatch(c -> c.toLowerCase().contains("gemini"))) {
-            car.add(0, hayImg
-                    ? "Gemini analizó la foto junto con el texto y los datasets de piel."
-                    : "Gemini analizó el texto con apoyo de HAM10000 / PAD-UFES.");
-        }
-        for (String c : nvlList(local.getCaracteristicasObservadas())) {
-            if (car.stream().noneMatch(x -> x.equalsIgnoreCase(c))) car.add(c);
-        }
-        gemini.setCaracteristicasObservadas(car);
-        List<String> dx = nvlList(gemini.getDiagnosticosDiferenciales());
-        if (dx.isEmpty()) dx.addAll(nvlList(local.getDiagnosticosDiferenciales()));
-        gemini.setDiagnosticosDiferenciales(dx);
+    private static AiDermatologiaResponse fusionarPiel(AiDermatologiaResponse gemini, AiDermatologiaResponse local) {
         if (gemini.getNivelRiesgo() == null || gemini.getNivelRiesgo().isBlank()) {
             gemini.setNivelRiesgo(local.getNivelRiesgo());
         } else {
             gemini.setNivelRiesgo(gemini.getNivelRiesgo().trim().toUpperCase());
         }
         if (gemini.getScoreRiesgo() == null) gemini.setScoreRiesgo(local.getScoreRiesgo());
-        if (gemini.getAdvertencia() == null || gemini.getAdvertencia().isBlank()) {
-            gemini.setAdvertencia("Orientación automática. No sustituye consulta presencial.");
+        if (gemini.getExplicacion() == null || gemini.getExplicacion().isBlank()) {
+            gemini.setExplicacion(local.getExplicacion());
         }
         return gemini;
     }
