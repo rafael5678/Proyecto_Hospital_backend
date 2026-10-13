@@ -16,7 +16,7 @@ WORKDIR /app
 RUN addgroup -S hospy && adduser -S hospy -G hospy
 USER hospy
 
-COPY --from=build /app/target/Medico-*.jar /app/app.jar
+COPY --from=build /app/target/hospital-*.jar /app/app.jar
 
 # Render inyecta PORT; Spring lo lee en application.properties
 ENV PORT=8080

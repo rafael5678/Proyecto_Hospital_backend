@@ -1,0 +1,106 @@
+package com.hospy.service;
+
+import com.hospy.dto.AiMetricsResponse;
+import com.hospy.dto.ReportResponse;
+import com.hospy.model.AppointmentStatus;
+import com.hospy.repository.AppointmentRepository;
+import com.hospy.repository.AppointmentChangeRepository;
+import com.hospy.repository.DoctorRepository;
+import com.hospy.repository.PatientRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * HU-15: Reportes con recursividad en agregarMesRecursivo.
+ */
+@Service
+@RequiredArgsConstructor
+public class ReportService {
+
+    private final AppointmentRepository citaRepository;
+    private final PatientRepository pacienteRepository;
+    private final DoctorRepository medicoRepository;
+    private final AppointmentChangeRepository cambioCitaRepository;
+
+    public ReportResponse generarReporte(int anio) {
+        List<Map<String, Object>> desglose = new ArrayList<>();
+        agregarMesRecursivo(anio, 1, desglose);
+        return ReportResponse.builder()
+                .totalCitas(citaRepository.count())
+                .citasPendientes(citaRepository.countByEstado(AppointmentStatus.PENDIENTE))
+                .citasAceptadas(citaRepository.countByEstado(AppointmentStatus.ACEPTADA))
+                .citasCanceladas(citaRepository.countByEstado(AppointmentStatus.CANCELADA))
+                .totalPacientes(pacienteRepository.count())
+                .totalMedicos(medicoRepository.count())
+                .desgloseMensual(desglose)
+                .build();
+    }
+
+    public AiMetricsResponse generarMetricasIA(boolean apiKeyActiva, String versionIa, String estadoTranscripcion) {
+        long totalCitas = citaRepository.count();
+        long citasConTriage = citaRepository.countConTriage();
+        long citasConPiel = citaRepository.countConEvaluacionPiel();
+        long prioridadAlta = citaRepository.countPrioridadAlta();
+        long reprogramadasIA = cambioCitaRepository.countByRealizadoPor("SISTEMA_IA");
+
+        /* Distribución de severidad */
+        Map<String, Long> distribucion = new LinkedHashMap<>();
+        for (String sev : List.of("Rojo", "Naranja", "Amarillo", "Verde", "Azul")) {
+            distribucion.put(sev, 0L);
+        }
+        for (Object[] row : citaRepository.distribucionSeveridad()) {
+            String sev = (String) row[0];
+            Long cnt = (Long) row[1];
+            distribucion.put(sev, cnt);
+        }
+
+        String estadoConexion = apiKeyActiva ? "Operativo — API Key configurada" : "Modo Demo — sin API Key";
+
+        return AiMetricsResponse.builder()
+                .totalCitas(totalCitas)
+                .citasConTriage(citasConTriage)
+                .citasConEvaluacionPiel(citasConPiel)
+                .citasPrioridadAlta(prioridadAlta)
+                .citasReprogramadasPorIA(reprogramadasIA)
+                .distribucionSeveridad(distribucion)
+                .apiKeyActiva(apiKeyActiva)
+                .versionIa(versionIa)
+                .estadoWhisper(estadoTranscripcion)
+                .estadoSoap(apiKeyActiva ? "Operativo — Gemini/LLM genera borrador SOAP" : "Demo — plantilla local")
+                .estadoTriage(apiKeyActiva ? "Operativo — análisis Gemini/NLP" : "Demo — reglas de palabra clave")
+                .estadoDermatologia(apiKeyActiva ? "Operativo — Gemini visión + clasificador local" : "Demo — clasificación por texto")
+                .estadoInteracciones(apiKeyActiva ? "Operativo — Gemini revisa interacciones" : "Demo — reglas predefinidas")
+                .estadoPrecios(apiKeyActiva ? "Operativo — estimación Gemini" : "Demo — precios simulados")
+                .timeoutMedicoSeg(300)
+                .timeoutAdminSeg(600)
+                .build();
+    }
+
+    private void agregarMesRecursivo(int anio, int mes, List<Map<String, Object>> acumulado) {
+        if (mes > 12) return;
+        YearMonth ym = YearMonth.of(anio, mes);
+        LocalDateTime inicio = ym.atDay(1).atStartOfDay();
+        LocalDateTime fin = ym.atEndOfMonth().atTime(23, 59, 59);
+        long total = citaRepository.countByFechaHoraBetween(inicio, fin);
+        Map<String, Object> dato = new HashMap<>();
+        dato.put("mes", mes);
+        dato.put("nombreMes", obtenerNombreMes(mes));
+        dato.put("totalCitas", total);
+        acumulado.add(dato);
+        agregarMesRecursivo(anio, mes + 1, acumulado);
+    }
+
+    private String obtenerNombreMes(int mes) {
+        String[] nombres = {"", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"};
+        return nombres[mes];
+    }
+}

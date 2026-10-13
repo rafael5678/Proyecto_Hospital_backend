@@ -8,11 +8,11 @@
 		<version>4.0.6</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.usuario</groupId>
-	<artifactId>Medico</artifactId>
+	<groupId>com.hospy</groupId>
+	<artifactId>hospital</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name/>
-	<description/>
+	<name>Hospy Hospital Portal</name>
+	<description>Hospital portal with appointments, AI support and notifications.</description>
 	<url/>
 	<licenses>
 		<license/>
