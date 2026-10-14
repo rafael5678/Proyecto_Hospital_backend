@@ -254,7 +254,7 @@ public class AiService {
             String url = geminiBaseUrl + "/" + modelo + ":generateContent?key=" + geminiKey;
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(Math.min(timeout, 12)))
+                    .timeout(Duration.ofSeconds(Math.max(timeout, 30)))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8))
                     .build();
@@ -312,43 +312,45 @@ public class AiService {
         String fotoB64 = extraerBase64(req.getImagenBase64());
         boolean hayFoto = !fotoB64.isBlank();
         final String system = """
-                Eres un clínico experto. Usa TODO tu conocimiento médico, no solo la pista interna.
-                Analiza el relato y la foto si existe. Identifica zona, tipo de molestia y especialidad.
-                NUNCA menciones datasets, modelos, ExtraTrees, HAM10000, ESI, MedQA, Hugging Face ni precisión.
-                El paciente solo debe ver severidad y el porqué clínico.
+                Eres el médico de orientación de Hospy. Analiza ESTE caso con tu criterio y con la foto si existe.
+                La pista de datasets es solo una referencia: si el relato o la imagen dicen otra cosa, corrígela.
+                Habla solo de lo que el paciente contó o de lo que se ve en la foto. No inventes falta de aire, dolor de pecho ni otros síntomas que no mencionó.
+                El resumen debe tener 4 a 6 oraciones en español: qué refirió, desde cuándo, antecedentes, qué se aprecia en la foto si hay, por qué ese nivel y que agende ya la especialidad mientras espera.
+                Las recomendaciones deben decir qué vigilar de SUS molestias y qué hacer hasta la cita.
+                Si hay dolor de cabeza y además una lesión de piel, explica las dos cosas y elige la especialidad más urgente.
+                NUNCA menciones datasets, modelos, ESI, HAM10000 ni precisión.
                 Devuelve UNICAMENTE JSON:
                 {"severidad":"Rojo|Naranja|Amarillo|Verde|Azul","escala":"orientación 5 niveles","nivelEsi":1,
                  "especialidadRecomendada":"...","prioridad":1,
-                 "hallazgos":[],"recomendaciones":"...","resumen":"2-4 oraciones: qué pasa y por qué ese nivel"}
+                 "hallazgos":["hallazgos concretos de este caso"],"recomendaciones":"...","resumen":"..."}
                 """;
         final String user = """
-                Patient describe:
+                Caso a analizar:
                 - Síntomas: %s
                 - Duración: %s
                 - Antecedentes: %s
                 - Edad: %s
-                - Foto adjunta: %s
-                Pista interna (no la cites): severidad=%s, especialidad=%s.
-                Escribe un resumen humano: qué ves o infieres y por qué esa severidad.
+                - Foto: %s
+                Pista interna de datasets, no la copies ni la cites: %s
                 """.formatted(
-                req.getSintomas(),
+                nvl(req.getSintomas()),
                 nvl(req.getDuracion()),
                 nvl(req.getAntecedentes()),
                 req.getEdadPaciente() == null ? "no informado" : req.getEdadPaciente().toString(),
-                hayFoto ? "sí, obsérvala con detalle" : "no",
-                local.getSeveridad(),
-                local.getEspecialidadRecomendada());
+                hayFoto ? "sí, descríbela y úsala en el resumen" : "no",
+                datasets.contextoTriageParaGemini(req));
 
         Optional<String> llm = consultarGemini(system, user, req.getImagenBase64());
-        if (llm.isEmpty()) return limpiarTriage(local, req.getSintomas());
+        if (llm.isEmpty()) return orientarSinGemini(local, req);
         try {
             AiTriageResponse r = mapper.readValue(llm.get(), AiTriageResponse.class);
             r.setModoDemo(false);
             normalizarTriage(r, local);
+            completarOrientacion(r, local, req);
             return limpiarTriage(r, req.getSintomas());
         } catch (Exception ex) {
             log.warn("No se pudo leer JSON de triage Gemini: {}", ex.getMessage());
-            return limpiarTriage(local, req.getSintomas());
+            return orientarSinGemini(local, req);
         }
     }
 
@@ -397,17 +399,19 @@ public class AiService {
         }
         AiDermatologyResponse local = datasets.dermatologia(req);
         final String system = """
-                Eres un médico experto en piel, infección y trauma. Usa TODO tu conocimiento, no solo la pista interna.
-                Mira la foto y el relato. Di qué tan alto es el riesgo y POR QUÉ (color, hinchazón, herida, pus, dolor).
-                NUNCA menciones datasets, modelos, ExtraTrees, HAM10000, precisión, bosqué ni Hugging Face.
-                No listes porcentajes de un clasificador. Responde SOLO JSON:
+                Eres dermatólogo de orientación de Hospy. Mira la foto y el relato de ESTA lesión.
+                La pista del clasificador es solo referencia: descríbelo tú (zona, color, hinchazón, costra, pus, dolor) y corrígela si no coincide.
+                Explica el riesgo de lo que ves, qué cuidados seguir mientras agenda la cita y cuándo ir antes.
+                No hables de otros órganos si la foto y el texto son de piel.
+                NUNCA menciones datasets, modelos, ExtraTrees, HAM10000 ni precisión.
+                Responde SOLO JSON:
                 {"nivelRiesgo":"BAJO|MEDIO|ALTO|CRITICO","scoreRiesgo":0.0,
-                 "explicacion":"2-4 oraciones claras: qué ves y por qué ese nivel",
-                 "diagnosticosDiferenciales":[],"caracteristicasObservadas":[],
-                 "recomendaciones":"","advertencia":""}
+                 "explicacion":"4 oraciones: qué se ve, dónde, por qué ese nivel y qué hacer hasta la cita",
+                 "diagnosticosDiferenciales":["posibles cuadros de esta lesión"],
+                 "caracteristicasObservadas":["lo que se ve en la foto o se describe"],
+                 "recomendaciones":"cuidados concretos hasta ver al médico","advertencia":""}
                 """;
-        String user = userVisionPiel(req) + "\nPista interna (no la cites): riesgo="
-                + local.getNivelRiesgo() + ". Usa tu criterio si la foto o el texto dicen otra cosa.";
+        String user = userVisionPiel(req) + "\nPista interna, no la copies: " + datasets.contextoPielParaGemini(req);
         Optional<String> llm = consultarGemini(system, user, req.getImagenBase64());
         if (llm.isEmpty()) return limpiarPiel(local, req);
         try {
@@ -769,26 +773,79 @@ public class AiService {
     private static AiTriageResponse limpiarTriage(AiTriageResponse r, String sintomas) {
         r.setHallazgos(sinJerga(r.getHallazgos()));
         r.setEscala("Orientación clínica");
-        if (r.getResumen() == null || r.getResumen().isBlank() || esJergaTecnica(r.getResumen())) {
-            String sev = r.getSeveridad() == null ? "Verde" : r.getSeveridad();
-            String esp = r.getEspecialidadRecomendada() == null ? "Medicina General" : r.getEspecialidadRecomendada();
-            r.setResumen("Severidad " + sev + " hacia " + esp + " por lo que describes"
-                    + (sintomas == null || sintomas.isBlank() ? "." : ": " + sintomas.trim() + "."));
+        if (r.getResumen() != null && esJergaTecnica(r.getResumen())) {
+            r.setResumen(null);
         }
         if (r.getRecomendaciones() != null && esJergaTecnica(r.getRecomendaciones())) {
-            r.setRecomendaciones("Si empeora, hay fiebre o el dolor es intenso, consulta de forma presencial.");
+            r.setRecomendaciones(null);
+        }
+        if (r.getResumen() == null || r.getResumen().isBlank()) {
+            r.setResumen(orientacionDesdeRelato(sintomas, r));
+        }
+        if (r.getRecomendaciones() == null || r.getRecomendaciones().isBlank()) {
+            r.setRecomendaciones(cuidadosHastaLaCita(r));
         }
         return r;
     }
 
+    private AiTriageResponse orientarSinGemini(AiTriageResponse local, AiTriageRequest req) {
+        normalizarTriage(local, local);
+        local.setModoDemo(true);
+        local.setResumen(orientacionDesdeRelato(req.getSintomas(), local));
+        local.setRecomendaciones(cuidadosHastaLaCita(local));
+        return limpiarTriage(local, req.getSintomas());
+    }
+
+    private static void completarOrientacion(AiTriageResponse r, AiTriageResponse local, AiTriageRequest req) {
+        if (resumenPobre(r.getResumen(), local.getResumen())) {
+            r.setResumen(orientacionDesdeRelato(req.getSintomas(), r));
+        }
+        if (cuidadosPobres(r.getRecomendaciones())) {
+            r.setRecomendaciones(cuidadosHastaLaCita(r));
+        }
+    }
+
+    private static boolean resumenPobre(String resumen, String local) {
+        if (resumen == null || resumen.isBlank() || esJergaTecnica(resumen)) return true;
+        String t = resumen.trim();
+        if (local != null && t.equalsIgnoreCase(local.trim())) return true;
+        String l = t.toLowerCase();
+        return t.length() < 110 && l.startsWith("severidad ") && l.contains("hacia ");
+    }
+
+    private static boolean cuidadosPobres(String rec) {
+        if (rec == null || rec.isBlank() || esJergaTecnica(rec)) return true;
+        String t = rec.trim().toLowerCase();
+        return t.equals("si empeora, hay fiebre o el dolor es intenso, consulta de forma presencial.");
+    }
+
+    private static String orientacionDesdeRelato(String sintomas, AiTriageResponse r) {
+        String relato = sintomas == null || sintomas.isBlank() ? "lo que describes" : sintomas.trim();
+        String sev = r.getSeveridad() == null ? "Amarillo" : r.getSeveridad();
+        String esp = r.getEspecialidadRecomendada() == null ? "Medicina General" : r.getEspecialidadRecomendada();
+        return "Cuentas: " + relato + ". La orientación es " + sev
+                + " y lo adecuado es agendar " + esp
+                + " ahora, mientras esperas la cita. Vigila si esa molestia aumenta, aparece fiebre o la zona que señalas se extiende; si pasa, acude antes de forma presencial.";
+    }
+
+    private static String cuidadosHastaLaCita(AiTriageResponse r) {
+        String esp = r.getEspecialidadRecomendada() == null ? "la especialidad sugerida" : r.getEspecialidadRecomendada();
+        return "Reserva la cita con " + esp
+                + " sin dejar pasar el cuadro. Hasta ver al médico, descansa, anota cómo evoluciona lo que sientes y no te automediques con productos a los que seas alérgico. Si el dolor se vuelve mucho más fuerte, hay fiebre o la lesión crece, ve a urgencias antes de la cita.";
+    }
+
     private static AiDermatologyResponse limpiarPiel(AiDermatologyResponse r, AiDermatologyRequest req) {
         if (r.getNivelRiesgo() != null) r.setNivelRiesgo(r.getNivelRiesgo().trim().toUpperCase());
-        r.setCaracteristicasObservadas(List.of());
-        r.setDiagnosticosDiferenciales(List.of());
-        r.setAdvertencia(null);
-        r.setRecomendaciones(null);
-        if (r.getExplicacion() == null || r.getExplicacion().isBlank() || esJergaTecnica(r.getExplicacion())) {
+        r.setCaracteristicasObservadas(sinJerga(r.getCaracteristicasObservadas()));
+        r.setDiagnosticosDiferenciales(sinJerga(r.getDiagnosticosDiferenciales()));
+        if (r.getAdvertencia() != null && esJergaTecnica(r.getAdvertencia())) r.setAdvertencia(null);
+        if (r.getRecomendaciones() != null && esJergaTecnica(r.getRecomendaciones())) r.setRecomendaciones(null);
+        if (r.getExplicacion() == null || r.getExplicacion().isBlank() || esJergaTecnica(r.getExplicacion())
+                || r.getExplicacion().trim().length() < 80) {
             r.setExplicacion(explicacionPiel(r.getNivelRiesgo(), req));
+        }
+        if (r.getRecomendaciones() == null || r.getRecomendaciones().isBlank()) {
+            r.setRecomendaciones("Agenda dermatología con esta foto y la descripción. Mientras tanto no aprietes la zona, mantenla limpia y consulta antes si crece, duele más o aparece fiebre.");
         }
         return r;
     }
@@ -798,8 +855,8 @@ public class AiService {
         String porque = switch (n) {
             case "CRITICO" -> "Hay signos de alarma (dolor fuerte, extensión rápida o posible infección grave). Hay que valorarlo ya.";
             case "ALTO" -> "La zona se ve inflamada o alterada de forma importante. Puede ser infección o lesión que no debe esperarse.";
-            case "MEDIO" -> "Hay un cambio en la piel que conviene revisar, aunque no parece una emergencia inmediata.";
-            default -> "El cambio parece leve. Vigílalo y consulta si empeora, hay fiebre o el dolor aumenta.";
+            case "MEDIO" -> "La lesión que describes conviene revisarla pronto, aunque no parece una emergencia inmediata.";
+            default -> "El cambio de piel que describes parece leve. Vigílalo y consulta si empeora, hay fiebre o el dolor aumenta.";
         };
         String relato = (nvl(req.getDescripcion()).equals("no informado") ? "" : req.getDescripcion().trim());
         if (relato.isBlank() && req.getSintomasAsociados() != null) relato = req.getSintomasAsociados().trim();
