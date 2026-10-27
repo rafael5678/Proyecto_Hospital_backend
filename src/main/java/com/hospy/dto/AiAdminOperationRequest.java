@@ -10,4 +10,7 @@ public class AiAdminOperationRequest {
 
     /** JSON del alta en curso, para completar datos en el siguiente mensaje. */
     private String borrador;
+
+    /** Mensajes anteriores del administrador en este mismo registro, en orden. */
+    private java.util.List<String> historial;
 }

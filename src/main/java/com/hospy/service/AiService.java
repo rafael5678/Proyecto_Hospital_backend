@@ -466,6 +466,16 @@ public class AiService {
         if (debeReiniciarAlta(instruccion, previo)) previo = null;
         final String system = """
                 Eres Hospy y registras médicos y pacientes. Lees español natural, aunque venga incompleto o desordenado.
+                El texto puede venir de voz: tiene muletillas (ah, eh, bueno, listo), repeticiones y palabras cortadas. Ignóralas.
+                Lee TODA la conversación, no solo el último mensaje, y devuelve todos los datos que ya se dijeron en cualquier mensaje.
+                Si un dato aparece dos veces, usa el más reciente.
+                El administrador puede hablar en primera persona ("mi correo es…", "mi género es…"): son los datos de la persona que se registra.
+                Correo dictado: "juan camilo arroba gmail punto com" o "juancamilo.gmail.com" es "juancamilo@gmail.com". Sin espacios.
+                Fecha dictada: "25 de agosto del 2001" es "2001-08-25".
+                Teléfono dictado: "321 08 25 25" es "321082525". Solo dígitos.
+                Tipo de sangre: "A positivo" es "A+", "O negativo" es "O-".
+                Contacto de emergencia: el nombre o el parentesco ("mi madre"). Si solo dicen un número para el contacto, ese número es telefonoEmergencia.
+                Un campo que no se dijo va como "" (cadena vacía). Nunca escribas "No proporcionado", "N/A", "desconocido" ni "pendiente".
                 Ejemplos de cómo escribe el administrador, sin copiar estos nombres: "crea este paciente", "paciente: Ana López",
                 "el documento es 1087782595", "gmail ana@gmail.com", "la contraseña es Hospy2026", "12 años de experiencia",
                 "licencia MED-10", "teléfono 3001234567", "lunes a viernes de 8 a 12 y de 2 a 5".
@@ -489,25 +499,165 @@ public class AiService {
                  "diasAtencion":"","horaInicio":"","horaFin":"","horaInicio2":"","horaFin2":"","horario":"",
                  "mensaje":"qué dato acabas de entender"}
                 """;
-        String user = "Borrador actual:\n" + (previo == null ? "{}" : escribirBorrador(previo))
-                + "\nMensaje del administrador:\n" + instruccion;
+        List<String> historial = previo == null || req.getHistorial() == null ? List.of() : req.getHistorial();
+        StringBuilder conversacion = new StringBuilder();
+        int n = 1;
+        for (String anterior : historial) {
+            if (anterior != null && !anterior.isBlank()) conversacion.append(n++).append(". ").append(anterior.trim()).append('\n');
+        }
+        conversacion.append(n).append(". ").append(instruccion);
+        String user = "Datos ya entendidos (borrador):\n" + (previo == null ? "{}" : escribirBorrador(limpiarParaPrompt(previo)))
+                + "\n\nConversación completa del administrador en este registro:\n" + conversacion;
         Optional<String> llm = llamarLlm(system, user);
-        AiAdminOperationResponse dichos = adminOperacionLocal(instruccion, null);
-        if ("INFO".equalsIgnoreCase(dichos.getAccion()) && dichos.getMensaje() != null
-                && dichos.getMensaje().startsWith("Listo.")) {
+        AiAdminOperationResponse dichos = adminOperacionLocal(String.join("\n", historial) + "\n" + instruccion, null);
+        if (esCancelacion(instruccion)) {
+            dichos = adminOperacionLocal(instruccion, null);
             dichos.setModoDemo(llm.isEmpty());
             return dichos;
         }
         AiAdminOperationResponse r = llm.flatMap(this::leerRespuestaAdmin).orElse(null);
+        boolean entendioGemini = r != null;
         if (r == null) r = previo == null ? new AiAdminOperationResponse() : previo;
-        else r = fusionarAlta(previo, r);
-        aplicarDichos(r, dichos);
+        else {
+            limpiarVacios(r);
+            r = fusionarAlta(previo, r);
+        }
+        aplicarDichos(r, dichos, !entendioGemini);
+        normalizarAlta(r);
         r.setModoDemo(llm.isEmpty());
         return exigirDatosAlta(r);
     }
 
-    private void aplicarDichos(AiAdminOperationResponse destino, AiAdminOperationResponse dichos) {
+    private boolean esCancelacion(String texto) {
+        String t = texto == null ? "" : sinAcentoAdmin(texto).toLowerCase();
+        return t.contains("cancela") || t.contains("olvidalo") || t.contains("empezar de nuevo");
+    }
+
+    private AiAdminOperationResponse limpiarParaPrompt(AiAdminOperationResponse previo) {
+        AiAdminOperationResponse copia = leerBorrador(escribirBorrador(previo));
+        if (copia == null) return previo;
+        copia.setMensaje(null);
+        copia.setModoDemo(null);
+        return copia;
+    }
+
+    private static final Pattern VALOR_VACIO = Pattern.compile(
+            "(?i)^\\s*(no\\s+(proporcionad[oa]|informad[oa]|especificad[oa]|indicad[oa]|dad[oa]|mencionad[oa])|n/?a|null|ninguno?\\s+dato|desconocid[oa]|pendiente|sin\\s+dato|vac[ií]o|-+)\\s*\\.?\\s*$");
+
+    private String vacioSiRelleno(String valor) {
+        if (valor == null) return null;
+        return VALOR_VACIO.matcher(valor).matches() ? null : valor.trim();
+    }
+
+    private void limpiarVacios(AiAdminOperationResponse r) {
+        r.setNombre(vacioSiRelleno(r.getNombre()));
+        r.setEmail(vacioSiRelleno(r.getEmail()));
+        r.setPasswordSugerida(vacioSiRelleno(r.getPasswordSugerida()));
+        r.setEspecialidad(vacioSiRelleno(r.getEspecialidad()));
+        r.setNumeroLicencia(vacioSiRelleno(r.getNumeroLicencia()));
+        r.setTelefono(vacioSiRelleno(r.getTelefono()));
+        r.setDocumento(vacioSiRelleno(r.getDocumento()));
+        r.setConsultorio(vacioSiRelleno(r.getConsultorio()));
+        r.setBiografia(vacioSiRelleno(r.getBiografia()));
+        r.setCiudad(vacioSiRelleno(r.getCiudad()));
+        r.setDireccion(vacioSiRelleno(r.getDireccion()));
+        r.setGenero(vacioSiRelleno(r.getGenero()));
+        r.setTipoSangre(vacioSiRelleno(r.getTipoSangre()));
+        r.setAlergias(vacioSiRelleno(r.getAlergias()));
+        r.setFechaNacimiento(vacioSiRelleno(r.getFechaNacimiento()));
+        r.setContactoEmergencia(vacioSiRelleno(r.getContactoEmergencia()));
+        r.setTelefonoEmergencia(vacioSiRelleno(r.getTelefonoEmergencia()));
+        r.setObservaciones(vacioSiRelleno(r.getObservaciones()));
+        r.setDiasAtencion(vacioSiRelleno(r.getDiasAtencion()));
+        r.setHoraInicio(vacioSiRelleno(r.getHoraInicio()));
+        r.setHoraFin(vacioSiRelleno(r.getHoraFin()));
+        r.setHoraInicio2(vacioSiRelleno(r.getHoraInicio2()));
+        r.setHoraFin2(vacioSiRelleno(r.getHoraFin2()));
+        r.setHorario(vacioSiRelleno(r.getHorario()));
+    }
+
+    private static final List<String> DOMINIOS_CORREO = List.of(
+            "gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "yahoo.es", "live.com", "icloud.com", "hospy.com");
+
+    private void normalizarAlta(AiAdminOperationResponse r) {
+        if (r.getEmail() != null) {
+            String e = sinAcentoAdmin(r.getEmail()).toLowerCase()
+                    .replaceAll("\\s*arroba\\s*", "@").replaceAll("\\s*punto\\s*", ".").replaceAll("\\s+", "");
+            if (!e.contains("@")) {
+                for (String dominio : DOMINIOS_CORREO) {
+                    if (e.endsWith("." + dominio)) {
+                        e = e.substring(0, e.length() - dominio.length() - 1) + "@" + dominio;
+                        break;
+                    }
+                    if (e.endsWith(dominio) && e.length() > dominio.length()) {
+                        e = e.substring(0, e.length() - dominio.length()) + "@" + dominio;
+                        break;
+                    }
+                }
+            }
+            r.setEmail(e);
+        }
+        if (r.getTelefono() != null) r.setTelefono(r.getTelefono().replaceAll("[^0-9]", ""));
+        if (r.getTelefonoEmergencia() != null) {
+            String tel = r.getTelefonoEmergencia().replaceAll("[^0-9]", "");
+            r.setTelefonoEmergencia(tel.isEmpty() ? null : tel);
+        }
+        if (!enBlanco(r.getContactoEmergencia()) && enBlanco(r.getTelefonoEmergencia())) {
+            String soloDigitos = r.getContactoEmergencia().replaceAll("[^0-9]", "");
+            if (soloDigitos.length() >= 7 && r.getContactoEmergencia().replaceAll("[0-9\\s-]", "").isBlank()) {
+                r.setTelefonoEmergencia(soloDigitos);
+                r.setContactoEmergencia(null);
+            }
+        }
+        String fecha = fechaDesdeTexto(r.getFechaNacimiento());
+        if (fecha != null) r.setFechaNacimiento(fecha);
+        if (r.getTipoSangre() != null) {
+            Matcher ms = Pattern.compile("(?i)\\b(AB|A|B|O)\\s*([+-]|positivo|negativo)").matcher(r.getTipoSangre());
+            if (ms.find()) {
+                String signo = ms.group(2).toLowerCase().startsWith("n") || ms.group(2).equals("-") ? "-" : "+";
+                r.setTipoSangre(ms.group(1).toUpperCase() + signo);
+            }
+        }
+        if (r.getGenero() != null) {
+            String g = sinAcentoAdmin(r.getGenero()).toLowerCase();
+            if (g.startsWith("masc") || g.equals("hombre") || g.equals("m")) r.setGenero("Masculino");
+            else if (g.startsWith("fem") || g.equals("mujer") || g.equals("f")) r.setGenero("Femenino");
+        }
+        if (r.getAlergias() != null) {
+            String a = sinAcentoAdmin(r.getAlergias()).toLowerCase();
+            if (a.matches(".*\\b(ninguna|ninguno|no tengo|no tiene|sin alergias|no aplica)\\b.*")) r.setAlergias("Ninguna");
+        }
+    }
+
+    private static final List<String> MESES = List.of("enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre");
+
+    private String fechaDesdeTexto(String texto) {
+        if (texto == null || texto.isBlank()) return null;
+        String t = sinAcentoAdmin(texto).toLowerCase().replace("setiembre", "septiembre");
+        if (t.matches("\\s*\\d{4}-\\d{2}-\\d{2}\\s*")) return t.trim();
+        String fecha = null;
+        Matcher iso = Pattern.compile("(\\d{4})-(\\d{2})-(\\d{2})").matcher(t);
+        while (iso.find()) fecha = iso.group();
+        Matcher numerica = Pattern.compile("(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})").matcher(t);
+        while (numerica.find()) {
+            fecha = String.format("%s-%02d-%02d", numerica.group(3),
+                    Integer.parseInt(numerica.group(2)), Integer.parseInt(numerica.group(1)));
+        }
+        Matcher hablada = Pattern.compile("(\\d{1,2})\\s*de\\s*(" + String.join("|", MESES) + ")\\s*(?:de|del)?\\s*(\\d{4})").matcher(t);
+        while (hablada.find()) {
+            int mes = MESES.indexOf(hablada.group(2)) + 1;
+            fecha = String.format("%s-%02d-%02d", hablada.group(3), mes, Integer.parseInt(hablada.group(1)));
+        }
+        return fecha;
+    }
+
+    private void aplicarDichos(AiAdminOperationResponse destino, AiAdminOperationResponse dichos, boolean reemplazar) {
         if (dichos == null) return;
+        if (!reemplazar) {
+            fusionarAlta(dichos, destino);
+            return;
+        }
         if (!enBlanco(dichos.getNombre())) destino.setNombre(dichos.getNombre());
         if (!enBlanco(dichos.getEmail())) destino.setEmail(dichos.getEmail());
         if (!enBlanco(dichos.getEspecialidad())) destino.setEspecialidad(dichos.getEspecialidad());
@@ -524,6 +674,11 @@ public class AiService {
         if (!enBlanco(dichos.getFechaNacimiento())) destino.setFechaNacimiento(dichos.getFechaNacimiento());
         if (!enBlanco(dichos.getTipoSangre())) destino.setTipoSangre(dichos.getTipoSangre());
         if (!enBlanco(dichos.getGenero())) destino.setGenero(dichos.getGenero());
+        if (!enBlanco(dichos.getCiudad())) destino.setCiudad(dichos.getCiudad());
+        if (!enBlanco(dichos.getDireccion())) destino.setDireccion(dichos.getDireccion());
+        if (!enBlanco(dichos.getAlergias())) destino.setAlergias(dichos.getAlergias());
+        if (!enBlanco(dichos.getContactoEmergencia())) destino.setContactoEmergencia(dichos.getContactoEmergencia());
+        if (!enBlanco(dichos.getTelefonoEmergencia())) destino.setTelefonoEmergencia(dichos.getTelefonoEmergencia());
         if (dichos.getAnosExperiencia() != null) destino.setAnosExperiencia(dichos.getAnosExperiencia());
         if (!enBlanco(dichos.getAccion())) destino.setAccion(dichos.getAccion());
     }
@@ -622,13 +777,12 @@ public class AiService {
         else if (t.contains("medic") || t.contains("doctor") || t.contains("especialista")) r.setAccion("CREAR_MEDICO");
         String nombre = extraerNombreAlta(original);
         if (nombre != null) r.setNombre(nombre);
-        String email = extraerGrupo(original, "([\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,})");
+        String email = correoEnTexto(original);
         if (email != null) r.setEmail(email);
-        String anos = extraerGrupo(t, "(?:experiencia\\s*(?:de)?\\s*)?(\\d{1,2})\\s*anos");
-        if (anos == null) anos = extraerGrupo(t, "experiencia\\s*(?:de|:)?\\s*(\\d{1,2})");
-        if (anos != null) r.setAnosExperiencia(Integer.parseInt(anos));
-        String licencia = extraerGrupo(original, "(?i)licencia\\s*(?:es|numero|n[uú]mero|:)?\\s*[:#]?\\s*([A-Za-z0-9-]{3,30})");
-        if (licencia != null) r.setNumeroLicencia(licencia);
+        Integer anos = anosEnTexto(t);
+        if (anos != null) r.setAnosExperiencia(anos);
+        String licencia = extraerGrupo(original, "(?i)licencia\\s*(?:es|numero|n[uú]mero|:)?\\s*[:#]?\\s*([A-Za-z]{0,8}[\\s-]?\\d[\\d-]{1,20}|[A-Za-z0-9-]{3,30}\\d)");
+        if (licencia != null) r.setNumeroLicencia(licencia.trim().replaceAll("\\s+", "-").toUpperCase());
         String documento = extraerGrupo(original, "(?i)(?:documento|c[eé]dula|cedula|dni)(?:\\s+de\\s+identidad)?\\s*(?:es|n[uú]mero|:)?\\s*[:#]?\\s*([A-Za-z0-9-]{5,20})");
         if (documento != null) r.setDocumento(documento);
         String telefono = extraerGrupo(original, "(?i)(?:tel[eé]fono|celular|cel|whatsapp)\\s*(?:es|:)?\\s*([0-9][0-9 \\-]{6,18})");
@@ -637,39 +791,96 @@ public class AiService {
         if (clave != null && !clave.equalsIgnoreCase("es")) r.setPasswordSugerida(clave);
         String esp = especialidadEnTexto(original);
         if (esp != null) r.setEspecialidad(esp);
-        String sangre = extraerGrupo(original, "(?i)(?:sangre|rh|grupo sangu[ií]neo)\\s*(?:es|:)?\\s*(AB|A|B|O)\\s*([+-]|positivo|negativo)");
-        if (sangre != null) {
-            Matcher ms = Pattern.compile("(?i)(AB|A|B|O)\\s*([+-]|positivo|negativo)").matcher(original);
-            if (ms.find()) {
-                String signo = ms.group(2).startsWith("n") || ms.group(2).equals("-") ? "-" : "+";
-                r.setTipoSangre(ms.group(1).toUpperCase() + signo);
-            }
+        Matcher ms = Pattern.compile("(?i)(?:sangre|rh|sangu[ií]neo)\\s*(?:es|:)?\\s*(AB|A|B|O)\\s*([+-]|positivo|negativo)").matcher(original);
+        while (ms.find()) {
+            String signo = ms.group(2).toLowerCase().startsWith("n") || ms.group(2).equals("-") ? "-" : "+";
+            r.setTipoSangre(ms.group(1).toUpperCase() + signo);
         }
-        Matcher fecha = Pattern.compile("(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})").matcher(original);
-        if (fecha.find()) {
-            r.setFechaNacimiento(String.format("%s-%02d-%02d", fecha.group(3),
-                    Integer.parseInt(fecha.group(2)), Integer.parseInt(fecha.group(1))));
-        } else {
-            String iso = extraerGrupo(original, "(\\d{4}-\\d{2}-\\d{2})");
-            if (iso != null) r.setFechaNacimiento(iso);
+        Matcher mg = Pattern.compile("\\b(masculino|hombre|femenino|mujer)\\b").matcher(t);
+        while (mg.find()) {
+            r.setGenero(mg.group(1).startsWith("masc") || mg.group(1).equals("hombre") ? "Masculino" : "Femenino");
         }
-        if (t.matches(".*\\b(masculino|hombre)\\b.*")) r.setGenero("Masculino");
-        else if (t.matches(".*\\b(femenino|mujer)\\b.*")) r.setGenero("Femenino");
+        String fechaHablada = fechaDesdeTexto(original);
+        if (fechaHablada != null) r.setFechaNacimiento(fechaHablada);
+        String fin = "(?=[.,;\\n]|\\s+y\\s+(?:el|la|mi|las|los)\\b|$)";
+        String ciudad = extraerGrupo(original, "(?i)ciudad\\s*(?:es|:)?\\s*([\\p{L}][\\p{L} .'-]{1,40}?)" + fin);
+        if (ciudad != null) r.setCiudad(ciudad);
+        String direccion = extraerGrupo(original, "(?i)direcci[oó]n\\s*(?:es|:)?\\s*(?:ah\\s+|eh\\s+)?([\\p{L}0-9#][^.;\\n]{2,80}?)"
+                + "(?=,\\s*(?:mi|su|la|el|y|ciudad|tel[eé]fono|g[eé]nero|alergias?)\\b|\\s+y\\s+(?:mi|su|la|el)\\b|[.;\\n]|$)");
+        if (direccion != null) r.setDireccion(direccion);
+        if (t.matches("(?s).*\\b(no tengo (ninguna|alergias)|ninguna alergia|sin alergias|alergias?[,:]?\\s*(no|ninguna))\\b.*")) {
+            r.setAlergias("Ninguna");
+        }
+        String contacto = extraerGrupo(original, "(?i)contacto de emergencia\\s*(?:es|:)?\\s*(?:ah\\s+|eh\\s+)?([\\p{L}][\\p{L} .'-]{1,50}?)" + fin);
+        if (contacto != null) r.setContactoEmergencia(contacto);
+        String telEmergencia = extraerGrupo(original, "(?i)(?:tel[eé]fono de emergencia|contacto de emergencia)\\s*(?:es|:)?\\s*(?:ah\\s+|eh\\s+)?([0-9][0-9 \\-]{6,18})");
+        if (telEmergencia != null) r.setTelefonoEmergencia(telEmergencia.replaceAll("[^0-9]", ""));
         completarHorario(r, original);
         r.setModoDemo(true);
         return r;
     }
 
     private String extraerNombreAlta(String original) {
-        String nombre = extraerGrupo(original, "(?i)(?:paciente|m[eé]dico|doctor)\\s*[:\\-]\\s*([\\p{L}][\\p{L} .'-]{2,80})");
+        String letras = "([\\p{L}][\\p{L} '-]{2,80})";
+        String nombre = extraerGrupo(original, "(?i)(?:paciente|m[eé]dico|doctor|doctora)\\s*[:\\-]\\s*" + letras);
         if (nombre == null) {
-            nombre = extraerGrupo(original, "(?i)(?:con el nombre|nombre|llamad[oa])\\s*[:\\-]?\\s*([\\p{L}][\\p{L} .'-]{2,80})");
+            nombre = extraerGrupo(original, "(?i)(?:mi nombre es|su nombre es|el nombre es|nombre completo es|con el nombre(?: de)?|se llama|llamad[oa]|nombre\\s*:)\\s*" + letras);
         }
         if (nombre == null) return null;
-        nombre = nombre.split("(?i)\\s+(con|correo|email|gmail|documento|tel[eé]fono|celular|licencia|especialidad|clave|contrase)\\b")[0].trim();
+        nombre = nombre.split("(?i)\\s+(con|y|es|mi|su|el|la|correo|email|gmail|documento|tel[eé]fono|celular|licencia|especialidad|clave|contrase\\p{L}*|que|tiene|atiende)\\b")[0].trim();
         nombre = nombre.replaceAll("[,.:;]+$", "").trim();
-        return nombre.isBlank() ? null : nombre;
+        if (nombre.split("\\s+").length > 6 || nombre.length() < 3) return null;
+        return nombre;
     }
+
+    private static final Map<String, Integer> NUMEROS_HABLADOS = Map.ofEntries(
+            Map.entry("un", 1), Map.entry("uno", 1), Map.entry("dos", 2), Map.entry("tres", 3), Map.entry("cuatro", 4),
+            Map.entry("cinco", 5), Map.entry("seis", 6), Map.entry("siete", 7), Map.entry("ocho", 8), Map.entry("nueve", 9),
+            Map.entry("diez", 10), Map.entry("once", 11), Map.entry("doce", 12), Map.entry("trece", 13), Map.entry("catorce", 14),
+            Map.entry("quince", 15), Map.entry("dieciseis", 16), Map.entry("diecisiete", 17), Map.entry("dieciocho", 18),
+            Map.entry("diecinueve", 19), Map.entry("veinte", 20), Map.entry("veintiuno", 21), Map.entry("veintidos", 22),
+            Map.entry("veintitres", 23), Map.entry("veinticuatro", 24), Map.entry("veinticinco", 25), Map.entry("treinta", 30),
+            Map.entry("cuarenta", 40));
+
+    private Integer anosEnTexto(String t) {
+        String digitos = extraerGrupo(t, "(\\d{1,2})\\s*anos(?:\\s+de\\s+experiencia)?");
+        if (digitos == null) digitos = extraerGrupo(t, "experiencia\\s*(?:de|:|es)?\\s*(\\d{1,2})");
+        if (digitos != null) return Integer.parseInt(digitos);
+        String palabra = extraerGrupo(t, "\\b([a-z]+)\\s+anos(?:\\s+de\\s+experiencia)?");
+        if (palabra != null && NUMEROS_HABLADOS.containsKey(palabra)) return NUMEROS_HABLADOS.get(palabra);
+        return null;
+    }
+
+    private String correoEnTexto(String original) {
+        String t = sinAcentoAdmin(original).toLowerCase()
+                .replaceAll("\\s+punto\\s+", ".")
+                .replaceAll("\\s*arroba\\s*", "@");
+        String correo = extraerGrupo(t, "([\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+)");
+        if (correo != null) return correo.replaceAll("\\.+$", "");
+        Matcher sinArroba = Pattern.compile("([\\w.+-]+?)\\.?(gmail|hotmail|outlook|yahoo|icloud|live)\\.(com|es|co)\\b").matcher(t);
+        String encontrado = null;
+        while (sinArroba.find()) {
+            encontrado = sinArroba.group(1) + "@" + sinArroba.group(2) + "." + sinArroba.group(3);
+        }
+        return encontrado;
+    }
+
+    private static final Map<String, String> PROFESIONES = Map.ofEntries(
+            Map.entry("pediatra", "Pediatría"), Map.entry("cardiologo", "Cardiología"), Map.entry("cardiologa", "Cardiología"),
+            Map.entry("neurologo", "Neurología"), Map.entry("neurologa", "Neurología"),
+            Map.entry("dermatologo", "Dermatología"), Map.entry("dermatologa", "Dermatología"),
+            Map.entry("traumatologo", "Traumatología"), Map.entry("traumatologa", "Traumatología"),
+            Map.entry("ortopedista", "Ortopedia"), Map.entry("ginecologo", "Ginecología"), Map.entry("ginecologa", "Ginecología"),
+            Map.entry("oftalmologo", "Oftalmología"), Map.entry("oftalmologa", "Oftalmología"),
+            Map.entry("otorrino", "Otorrinolaringología"), Map.entry("gastroenterologo", "Gastroenterología"),
+            Map.entry("gastroenterologa", "Gastroenterología"), Map.entry("endocrinologo", "Endocrinología"),
+            Map.entry("endocrinologa", "Endocrinología"), Map.entry("urologo", "Urología"), Map.entry("urologa", "Urología"),
+            Map.entry("psiquiatra", "Psiquiatría"), Map.entry("neumologo", "Neumología"), Map.entry("neumologa", "Neumología"),
+            Map.entry("internista", "Medicina Interna"), Map.entry("reumatologo", "Reumatología"),
+            Map.entry("reumatologa", "Reumatología"), Map.entry("oncologo", "Oncología"), Map.entry("oncologa", "Oncología"),
+            Map.entry("nefrologo", "Nefrología"), Map.entry("nefrologa", "Nefrología"), Map.entry("infectologo", "Infectología"),
+            Map.entry("infectologa", "Infectología"), Map.entry("medico general", "Medicina General"),
+            Map.entry("medica general", "Medicina General"));
 
     private String especialidadEnTexto(String texto) {
         if (texto == null) return null;
@@ -683,7 +894,11 @@ public class AiService {
                 mejorLargo = e.length();
             }
         }
-        return mejor;
+        if (mejor != null) return mejor;
+        for (Map.Entry<String, String> profesion : PROFESIONES.entrySet()) {
+            if (n.matches("(?s).*\\b" + profesion.getKey() + "s?\\b.*")) return profesion.getValue();
+        }
+        return null;
     }
 
     private void completarHorario(AiAdminOperationResponse r, String original) {
@@ -835,9 +1050,12 @@ public class AiService {
     private String extraerGrupo(String texto, String regex) {
         if (texto == null) return null;
         Matcher m = Pattern.compile(regex).matcher(texto);
-        if (!m.find()) return null;
-        String valor = m.group(1).trim();
-        return valor.isBlank() ? null : valor;
+        String valor = null;
+        while (m.find()) {
+            String encontrado = m.group(1) == null ? "" : m.group(1).trim();
+            if (!encontrado.isBlank()) valor = encontrado;
+        }
+        return valor;
     }
 
     private boolean enBlanco(String valor) {
