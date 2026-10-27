@@ -900,9 +900,8 @@ public class AiService {
         }
         String telefono = extraerGrupo(original, "(?i)(?:tel[eé]fono|celular|cel|whatsapp)\\s*(?:es|:)?\\s*([0-9][0-9 \\-]{6,18})");
         if (telefono != null) r.setTelefono(telefono.replaceAll("[^0-9]", ""));
-        String clave = extraerGrupo(original, "(?i)(?:clave|contrase[nñ]a|password)\\s*(?:es|:)?\\s*(\\S{6,40})");
-        if (clave != null) clave = clave.replaceAll("[,.;:]+$", "");
-        if (clave != null && clave.length() >= 6) r.setPasswordSugerida(clave);
+        String clave = claveEnTexto(original);
+        if (clave != null) r.setPasswordSugerida(clave);
         String esp = especialidadEnTexto(original);
         if (esp != null) r.setEspecialidad(esp);
         Matcher ms = Pattern.compile("(?i)(?:sangre|rh|sangu[ií]neo)\\s*[,:]?\\s*(?:es\\s*)?[,:]?\\s*(AB|A|B|O)\\s*([+-]|positivo|negativo)").matcher(original);
@@ -944,6 +943,21 @@ public class AiService {
         completarHorario(r, original);
         r.setModoDemo(true);
         return r;
+    }
+
+    /** La última contraseña dicha; si se dictó en grupos de dígitos ("0 27 1") se juntan. */
+    private String claveEnTexto(String original) {
+        String conector = "\\s*(?:(?:ser[ií]a|ser[aá]|va\\s+a\\s+ser|queda|es|ponle|pon)\\s*)?[:,]?\\s*";
+        Matcher m = Pattern.compile("(?i)(?:clave|contrase[nñ]a|password)" + conector
+                + "((?:\\d[\\s-]?){3,19}\\d(?![\\w])|\\S{2,40})").matcher(original);
+        String clave = null;
+        while (m.find()) {
+            String valor = m.group(1).trim().replaceAll("[,.;:]+$", "");
+            if (valor.matches("[\\d\\s-]+")) valor = valor.replaceAll("[\\s-]", "");
+            if (valor.equalsIgnoreCase("es") || valor.isBlank()) continue;
+            clave = valor;
+        }
+        return clave;
     }
 
     private String rolMencionadoPrimero(String t) {
@@ -1179,7 +1193,13 @@ public class AiService {
         List<String> faltan = new ArrayList<>();
         if (enBlanco(r.getNombre())) faltan.add("el nombre completo");
         if (enBlanco(r.getEmail()) || !r.getEmail().contains("@")) faltan.add("el correo");
-        if (enBlanco(r.getPasswordSugerida()) || r.getPasswordSugerida().length() < 6) faltan.add("la contraseña");
+        String claveCorta = null;
+        if (enBlanco(r.getPasswordSugerida())) {
+            faltan.add("la contraseña (mínimo 6 caracteres)");
+        } else if (r.getPasswordSugerida().length() < 6) {
+            claveCorta = r.getPasswordSugerida();
+            r.setPasswordSugerida(null);
+        }
         if (medico) {
             r.setAccion("CREAR_MEDICO");
             if (esp == null) {
@@ -1209,6 +1229,13 @@ public class AiService {
             if (enBlanco(r.getAlergias())) faltan.add("las alergias (o «ninguna»)");
             if (enBlanco(r.getContactoEmergencia())) faltan.add("el contacto de emergencia");
             if (enBlanco(r.getTelefonoEmergencia())) faltan.add("el teléfono de emergencia");
+        }
+        if (claveCorta != null) {
+            r.setAccion("PREGUNTAR");
+            String resto = faltan.isEmpty() ? "" : " También me falta " + juntarFaltantes(faltan) + ".";
+            r.setMensaje("La contraseña «" + claveCorta + "» es muy corta: tiene " + claveCorta.length()
+                    + " caracteres y debe tener mínimo 6. Dime otra, por ejemplo " + claveCorta + "2026." + resto);
+            return r;
         }
         if (!faltan.isEmpty()) {
             r.setAccion("PREGUNTAR");
