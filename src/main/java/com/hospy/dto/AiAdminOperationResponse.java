@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AiAdminOperationResponse {
-    /** CREAR_MEDICO | CREAR_PACIENTE | INFO */
+    /** CREAR_MEDICO | CREAR_PACIENTE | PREGUNTAR | INFO */
     private String accion;
     private String nombre;
     private String email;
@@ -20,6 +20,14 @@ public class AiAdminOperationResponse {
     private String passwordSugerida;
     private String documento;
     private String telefono;
+    private String numeroLicencia;
+    private String consultorio;
+    private Integer anosExperiencia;
+    private String biografia;
+    private String fechaNacimiento;
+    private String genero;
+    private String ciudad;
+    private String alergias;
     private String mensaje;
     private Boolean modoDemo;
 }

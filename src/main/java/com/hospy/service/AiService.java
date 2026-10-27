@@ -23,6 +23,8 @@ import java.util.UUID;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -451,66 +453,263 @@ public class AiService {
                 .modoDemo(true).build();
     }
 
-    /* ============ Admin: interpretar alta de médico/paciente ============== */
+    private static final List<String> ESPECIALIDADES_ADMIN = List.of(
+            "Medicina General", "Cardiología", "Neurología", "Dermatología", "Traumatología",
+            "Ortopedia", "Pediatría", "Ginecología", "Oftalmología", "Otorrinolaringología",
+            "Gastroenterología", "Endocrinología", "Urología", "Psiquiatría", "Neumología",
+            "Medicina Interna", "Reumatología", "Oncología", "Nefrología", "Infectología");
+
+    /* ============ Admin: alta de médico o paciente por conversación ============== */
     public AiAdminOperationResponse adminOperacion(AiAdminOperationRequest req) {
+        String instruccion = req.getInstruccion() == null ? "" : req.getInstruccion().trim();
+        boolean altaNueva = esAltaNueva(instruccion);
+        AiAdminOperationResponse previo = altaNueva ? null : leerBorrador(req.getBorrador());
         final String system = """
-                Eres el asistente de administración del hospital Hospy.
-                Solo puedes proponer CREAR_MEDICO o CREAR_PACIENTE o INFO.
-                No inventes módulos nuevos de la aplicación. No des de baja usuarios.
+                Eres el asistente de altas del hospital Hospy. El administrador crea médicos y pacientes hablándote.
+                No inventes módulos, no des de baja usuarios y no crees administradores.
+                Conserva el borrador. El mensaje nuevo solo completa o corrige datos.
+                No inventes licencia, teléfono, documento, correo ni años de experiencia.
                 Especialidades válidas: Medicina General, Cardiología, Neurología, Dermatología,
-                Traumatología, Pediatría, Ginecología, Oftalmología, Otorrinolaringología,
+                Traumatología, Ortopedia, Pediatría, Ginecología, Oftalmología, Otorrinolaringología,
                 Gastroenterología, Endocrinología, Urología, Psiquiatría, Neumología,
-                Medicina Interna, Ortopedia, Reumatología, Oncología, Nefrología, Infectología.
+                Medicina Interna, Reumatología, Oncología, Nefrología, Infectología.
+                Obligatorios de un médico: nombre, email, especialidad, anosExperiencia, numeroLicencia, telefono.
+                Obligatorios de un paciente: nombre, email, documento, telefono.
+                Consultorio, biografía, ciudad, género, alergias y fecha de nacimiento son opcionales.
+                Si falta un obligatorio, accion=PREGUNTAR y mensaje pide solo lo que falta, en una frase.
+                Si está completo, accion=CREAR_MEDICO o CREAR_PACIENTE.
+                Si pide cancelar u otra cosa, accion=INFO.
+                Si no dan clave, passwordSugerida es Medico123 para médico y Paciente123 para paciente.
                 Devuelve SOLO JSON:
-                {"accion":"CREAR_MEDICO|CREAR_PACIENTE|INFO","nombre":"...","email":"...@hospy.com",
-                 "especialidad":"...","passwordSugerida":"Medico123","documento":"","telefono":"",
-                 "mensaje":"qué vas a crear y por qué"}
+                {"accion":"CREAR_MEDICO|CREAR_PACIENTE|PREGUNTAR|INFO","nombre":"","email":"",
+                 "especialidad":"","anosExperiencia":null,"numeroLicencia":"","telefono":"",
+                 "consultorio":"","biografia":"","documento":"","ciudad":"","genero":"",
+                 "alergias":"","fechaNacimiento":"","passwordSugerida":"","mensaje":""}
                 """;
-        String user = "Instrucción del administrador: " + req.getInstruccion();
+        String user = "Borrador actual:\n" + (previo == null ? "{}" : escribirBorrador(previo))
+                + "\nMensaje del administrador:\n" + instruccion;
         Optional<String> llm = llamarLlm(system, user);
-        if (llm.isEmpty()) return adminOperacionLocal(req.getInstruccion());
+        AiAdminOperationResponse dichos = adminOperacionLocal(instruccion, null);
+        if ("INFO".equalsIgnoreCase(dichos.getAccion()) && dichos.getMensaje() != null
+                && dichos.getMensaje().startsWith("Listo.")) {
+            dichos.setModoDemo(llm.isEmpty());
+            return dichos;
+        }
+        AiAdminOperationResponse r = llm.flatMap(this::leerRespuestaAdmin).orElse(null);
+        if (r == null) r = previo == null ? new AiAdminOperationResponse() : previo;
+        else r = fusionarAlta(previo, r);
+        aplicarDichos(r, dichos);
+        r.setModoDemo(llm.isEmpty());
+        return exigirDatosAlta(r);
+    }
+
+    private void aplicarDichos(AiAdminOperationResponse destino, AiAdminOperationResponse dichos) {
+        if (dichos == null) return;
+        if (!enBlanco(dichos.getNombre())) destino.setNombre(dichos.getNombre());
+        if (!enBlanco(dichos.getEmail())) destino.setEmail(dichos.getEmail());
+        if (!enBlanco(dichos.getEspecialidad())) destino.setEspecialidad(dichos.getEspecialidad());
+        if (!enBlanco(dichos.getNumeroLicencia())) destino.setNumeroLicencia(dichos.getNumeroLicencia());
+        if (!enBlanco(dichos.getTelefono())) destino.setTelefono(dichos.getTelefono());
+        if (!enBlanco(dichos.getDocumento())) destino.setDocumento(dichos.getDocumento());
+        if (!enBlanco(dichos.getPasswordSugerida())) destino.setPasswordSugerida(dichos.getPasswordSugerida());
+        if (dichos.getAnosExperiencia() != null) destino.setAnosExperiencia(dichos.getAnosExperiencia());
+        if (!enBlanco(dichos.getAccion())) destino.setAccion(dichos.getAccion());
+    }
+
+    private Optional<AiAdminOperationResponse> leerRespuestaAdmin(String json) {
         try {
-            AiAdminOperationResponse r = mapper.readValue(llm.get(), AiAdminOperationResponse.class);
-            r.setModoDemo(false);
-            if (r.getAccion() == null || r.getAccion().isBlank()) r.setAccion("INFO");
-            r.setAccion(r.getAccion().trim().toUpperCase());
-            if (!r.getAccion().equals("CREAR_MEDICO") && !r.getAccion().equals("CREAR_PACIENTE")) {
-                r.setAccion("INFO");
-            }
-            return r;
+            return Optional.of(mapper.readValue(json, AiAdminOperationResponse.class));
         } catch (Exception ex) {
-            return adminOperacionLocal(req.getInstruccion());
+            log.warn("No se pudo leer el alta de Gemini: {}", ex.getMessage());
+            return Optional.empty();
         }
     }
 
-    private AiAdminOperationResponse adminOperacionLocal(String instruccion) {
-        String t = instruccion == null ? "" : instruccion.toLowerCase();
-        if (t.contains("medico") || t.contains("médico") || t.contains("doctor")) {
-            String esp = "Medicina General";
-            if (t.contains("cardio")) esp = "Cardiología";
-            else if (t.contains("neuro")) esp = "Neurología";
-            else if (t.contains("derma") || t.contains("piel")) esp = "Dermatología";
-            else if (t.contains("trauma") || t.contains("hueso")) esp = "Traumatología";
-            else if (t.contains("pedia")) esp = "Pediatría";
-            else if (t.contains("gine")) esp = "Ginecología";
-            return AiAdminOperationResponse.builder()
-                    .accion("CREAR_MEDICO").especialidad(esp)
-                    .passwordSugerida("Medico123")
-                    .email("medico." + esp.toLowerCase().replace(" ", "") + "@hospy.com")
-                    .nombre("Dr. " + esp)
-                    .mensaje("Borrador local: crear médico de " + esp + ". Revisa nombre y correo antes de confirmar.")
-                    .modoDemo(true).build();
+    private AiAdminOperationResponse leerBorrador(String borrador) {
+        if (borrador == null || borrador.isBlank()) return null;
+        try {
+            return mapper.readValue(borrador, AiAdminOperationResponse.class);
+        } catch (Exception ex) {
+            return null;
         }
-        if (t.contains("paciente")) {
-            return AiAdminOperationResponse.builder()
-                    .accion("CREAR_PACIENTE").passwordSugerida("Paciente123")
-                    .mensaje("Borrador local: crear paciente. Completa nombre, correo y documento.")
-                    .modoDemo(true).build();
+    }
+
+    private String escribirBorrador(AiAdminOperationResponse r) {
+        try {
+            return mapper.writeValueAsString(r);
+        } catch (Exception ex) {
+            return "{}";
         }
-        return AiAdminOperationResponse.builder()
-                .accion("INFO")
-                .mensaje("Puedo crear un médico o un paciente. Ejemplo: «Crea un médico de pediatría llamado Ana Ruiz».")
-                .modoDemo(true).build();
+    }
+
+    private boolean esAltaNueva(String texto) {
+        String t = texto == null ? "" : sinAcentoAdmin(texto).toLowerCase();
+        boolean pideAlta = t.contains("crea") || t.contains("registrar") || t.contains("nuevo medico")
+                || t.contains("nueva medica") || t.contains("nuevo paciente") || t.contains("nueva paciente");
+        boolean diceQuien = t.contains("medic") || t.contains("doctor") || t.contains("especialista") || t.contains("paciente");
+        return pideAlta && diceQuien;
+    }
+
+    private AiAdminOperationResponse fusionarAlta(AiAdminOperationResponse previo, AiAdminOperationResponse nuevo) {
+        if (nuevo == null) nuevo = new AiAdminOperationResponse();
+        if (previo == null) return nuevo;
+        if (enBlanco(nuevo.getNombre())) nuevo.setNombre(previo.getNombre());
+        if (enBlanco(nuevo.getEmail())) nuevo.setEmail(previo.getEmail());
+        if (enBlanco(nuevo.getEspecialidad())) nuevo.setEspecialidad(previo.getEspecialidad());
+        if (enBlanco(nuevo.getNumeroLicencia())) nuevo.setNumeroLicencia(previo.getNumeroLicencia());
+        if (enBlanco(nuevo.getTelefono())) nuevo.setTelefono(previo.getTelefono());
+        if (enBlanco(nuevo.getConsultorio())) nuevo.setConsultorio(previo.getConsultorio());
+        if (enBlanco(nuevo.getBiografia())) nuevo.setBiografia(previo.getBiografia());
+        if (enBlanco(nuevo.getDocumento())) nuevo.setDocumento(previo.getDocumento());
+        if (enBlanco(nuevo.getCiudad())) nuevo.setCiudad(previo.getCiudad());
+        if (enBlanco(nuevo.getGenero())) nuevo.setGenero(previo.getGenero());
+        if (enBlanco(nuevo.getAlergias())) nuevo.setAlergias(previo.getAlergias());
+        if (enBlanco(nuevo.getFechaNacimiento())) nuevo.setFechaNacimiento(previo.getFechaNacimiento());
+        if (enBlanco(nuevo.getPasswordSugerida())) nuevo.setPasswordSugerida(previo.getPasswordSugerida());
+        if (nuevo.getAnosExperiencia() == null) nuevo.setAnosExperiencia(previo.getAnosExperiencia());
+        if (enBlanco(nuevo.getAccion()) || "PREGUNTAR".equalsIgnoreCase(nuevo.getAccion())
+                || "INFO".equalsIgnoreCase(nuevo.getAccion())) {
+            if (!enBlanco(previo.getAccion()) && !"INFO".equalsIgnoreCase(previo.getAccion())) {
+                nuevo.setAccion(previo.getAccion());
+            }
+        }
+        return nuevo;
+    }
+
+    private AiAdminOperationResponse adminOperacionLocal(String instruccion, AiAdminOperationResponse previo) {
+        AiAdminOperationResponse r = previo == null ? new AiAdminOperationResponse() : previo;
+        String original = instruccion == null ? "" : instruccion.trim();
+        String t = sinAcentoAdmin(original).toLowerCase();
+        if (t.contains("cancela") || t.contains("olvidalo") || t.contains("empezar de nuevo")) {
+            return AiAdminOperationResponse.builder().accion("INFO").modoDemo(true)
+                    .mensaje("Listo. Dime si el alta es de un médico o de un paciente.").build();
+        }
+        if (t.contains("paciente")) r.setAccion("CREAR_PACIENTE");
+        else if (t.contains("medic") || t.contains("doctor") || t.contains("especialista")) r.setAccion("CREAR_MEDICO");
+        String nombre = extraerGrupo(original, "(?i)(?:llamad[oa]|nombre)\\s+([\\p{L}][\\p{L} .'-]{2,80})");
+        if (nombre != null) {
+            nombre = nombre.split("(?i)\\s+(con|de|correo|email|documento|tel[eé]fono|celular|licencia|especialidad)\\b")[0].trim();
+            if (!nombre.isBlank()) r.setNombre(nombre);
+        }
+        String email = extraerGrupo(original, "([\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,})");
+        if (email != null) r.setEmail(email);
+        String anos = extraerGrupo(t, "(\\d{1,2})\\s*anos");
+        if (anos != null) r.setAnosExperiencia(Integer.parseInt(anos));
+        String licencia = extraerGrupo(original, "(?i)licencia\\s*[:#]?\\s*([A-Za-z0-9-]{3,30})");
+        if (licencia != null) r.setNumeroLicencia(licencia);
+        String documento = extraerGrupo(original, "(?i)(?:documento|c[eé]dula|cedula|dni)\\s*[:#]?\\s*([A-Za-z0-9-]{5,20})");
+        if (documento != null) r.setDocumento(documento);
+        String telefono = extraerGrupo(original, "(?i)(?:tel[eé]fono|celular|cel)\\s*[:#]?\\s*([0-9][0-9 \\-]{6,18})");
+        if (telefono != null) r.setTelefono(telefono.replaceAll("[^0-9]", ""));
+        String clave = extraerGrupo(original, "(?i)(?:clave|contrase[nñ]a|password)\\s+([^\\s,.]{6,40})");
+        if (clave != null) r.setPasswordSugerida(clave);
+        String esp = normalizarEspecialidad(original);
+        if (esp != null) r.setEspecialidad(esp);
+        r.setModoDemo(true);
+        return r;
+    }
+
+    private AiAdminOperationResponse exigirDatosAlta(AiAdminOperationResponse r) {
+        if (r == null) r = new AiAdminOperationResponse();
+        String accion = r.getAccion() == null ? "" : r.getAccion().trim().toUpperCase();
+        if ("INFO".equals(accion)) {
+            r.setAccion("INFO");
+            if (enBlanco(r.getMensaje())) {
+                r.setMensaje("Puedo crear un médico o un paciente. Dime el nombre y te pido lo que falte.");
+            }
+            return r;
+        }
+        if (!"CREAR_MEDICO".equals(accion) && !"CREAR_PACIENTE".equals(accion) && !"PREGUNTAR".equals(accion)) {
+            r.setAccion("INFO");
+            r.setMensaje("Dime si quieres crear un médico o un paciente, y el nombre.");
+            return r;
+        }
+        if ("PREGUNTAR".equals(accion) && enBlanco(r.getEspecialidad()) && enBlanco(r.getDocumento())
+                && enBlanco(r.getNumeroLicencia())) {
+            r.setMensaje("¿El alta es de un médico o de un paciente?");
+            return r;
+        }
+        if (r.getEmail() != null) r.setEmail(r.getEmail().trim().toLowerCase());
+        if (r.getTelefono() != null) r.setTelefono(r.getTelefono().replaceAll("[^0-9]", ""));
+        String esp = normalizarEspecialidad(r.getEspecialidad());
+        if (esp != null) r.setEspecialidad(esp);
+        boolean medico = "CREAR_MEDICO".equals(accion) || ("PREGUNTAR".equals(accion) && !enBlanco(r.getEspecialidad()));
+        if ("PREGUNTAR".equals(accion) && !enBlanco(r.getDocumento()) && enBlanco(r.getEspecialidad())) medico = false;
+        if ("CREAR_PACIENTE".equals(accion)) medico = false;
+        if ("CREAR_MEDICO".equals(accion)) medico = true;
+        List<String> faltan = new ArrayList<>();
+        if (enBlanco(r.getNombre())) faltan.add("el nombre completo");
+        if (enBlanco(r.getEmail()) || !r.getEmail().contains("@")) faltan.add("el correo");
+        if (medico) {
+            r.setAccion("CREAR_MEDICO");
+            if (enBlanco(r.getEspecialidad()) || normalizarEspecialidad(r.getEspecialidad()) == null) {
+                r.setEspecialidad(null);
+                faltan.add("la especialidad");
+            }
+            if (r.getAnosExperiencia() == null || r.getAnosExperiencia() < 0 || r.getAnosExperiencia() > 70) {
+                faltan.add("los años de experiencia");
+            }
+            if (enBlanco(r.getNumeroLicencia())) faltan.add("el número de licencia");
+            if (enBlanco(r.getTelefono()) || r.getTelefono().length() < 7) faltan.add("el teléfono");
+            if (enBlanco(r.getPasswordSugerida())) r.setPasswordSugerida("Medico123");
+        } else {
+            r.setAccion("CREAR_PACIENTE");
+            if (enBlanco(r.getDocumento())) faltan.add("el documento de identidad");
+            if (enBlanco(r.getTelefono()) || r.getTelefono().length() < 7) faltan.add("el teléfono");
+            if (enBlanco(r.getPasswordSugerida())) r.setPasswordSugerida("Paciente123");
+        }
+        if (!faltan.isEmpty()) {
+            r.setAccion("PREGUNTAR");
+            String quien = enBlanco(r.getNombre()) ? (medico ? "el médico" : "el paciente") : r.getNombre();
+            r.setMensaje("Para crear a " + quien + " me falta " + juntarFaltantes(faltan) + ".");
+            return r;
+        }
+        if (medico) {
+            r.setMensaje("Creo al médico " + r.getNombre() + ", " + r.getEspecialidad()
+                    + ", " + r.getAnosExperiencia() + " años de experiencia, licencia " + r.getNumeroLicencia()
+                    + ", teléfono " + r.getTelefono() + ", correo " + r.getEmail()
+                    + ". Clave inicial: " + r.getPasswordSugerida() + ".");
+        } else {
+            r.setMensaje("Creo al paciente " + r.getNombre() + ", documento " + r.getDocumento()
+                    + ", teléfono " + r.getTelefono() + ", correo " + r.getEmail()
+                    + ". Clave inicial: " + r.getPasswordSugerida() + ".");
+        }
+        return r;
+    }
+
+    private String juntarFaltantes(List<String> faltan) {
+        if (faltan.size() == 1) return faltan.get(0);
+        return String.join(", ", faltan.subList(0, faltan.size() - 1)) + " y " + faltan.get(faltan.size() - 1);
+    }
+
+    private String normalizarEspecialidad(String valor) {
+        if (valor == null || valor.isBlank()) return null;
+        String n = sinAcentoAdmin(valor).toLowerCase();
+        String mejor = null;
+        for (String especialidad : ESPECIALIDADES_ADMIN) {
+            String e = sinAcentoAdmin(especialidad).toLowerCase();
+            if (n.equals(e)) return especialidad;
+            if (n.contains(e)) return especialidad;
+            if (e.contains(n) && n.length() >= 5) mejor = especialidad;
+        }
+        return mejor;
+    }
+
+    private String extraerGrupo(String texto, String regex) {
+        if (texto == null) return null;
+        Matcher m = Pattern.compile(regex).matcher(texto);
+        if (!m.find()) return null;
+        String valor = m.group(1).trim();
+        return valor.isBlank() ? null : valor;
+    }
+
+    private boolean enBlanco(String valor) {
+        return valor == null || valor.isBlank();
+    }
+
+    private String sinAcentoAdmin(String valor) {
+        return java.text.Normalizer.normalize(valor, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
     }
 
     /* ============ 3. Escriba SOAP médico ============== */

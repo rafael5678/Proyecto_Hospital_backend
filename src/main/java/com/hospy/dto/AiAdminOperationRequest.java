@@ -7,4 +7,7 @@ import lombok.Data;
 public class AiAdminOperationRequest {
     @NotBlank
     private String instruccion;
+
+    /** JSON del alta en curso, para completar datos en el siguiente mensaje. */
+    private String borrador;
 }
