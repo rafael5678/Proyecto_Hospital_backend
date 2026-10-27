@@ -30,4 +30,9 @@ public class UserRequest {
     private String tipoSangre;
     private String ciudad;
     private String alergias;
+    private String diasAtencion;
+    private String horaInicio;
+    private String horaFin;
+    private String horaInicio2;
+    private String horaFin2;
 }

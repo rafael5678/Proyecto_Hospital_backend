@@ -28,6 +28,13 @@ public class AiAdminOperationResponse {
     private String genero;
     private String ciudad;
     private String alergias;
+    /** Días 1=lunes … 7=domingo, separados por coma. */
+    private String diasAtencion;
+    private String horaInicio;
+    private String horaFin;
+    private String horaInicio2;
+    private String horaFin2;
+    private String horario;
     private String mensaje;
     private Boolean modoDemo;
 }

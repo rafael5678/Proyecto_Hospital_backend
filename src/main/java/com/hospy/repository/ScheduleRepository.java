@@ -9,4 +9,5 @@ import java.util.List;
 public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     List<Schedule> findByMedicoAndDisponibleTrue(Doctor medico);
     List<Schedule> findByMedico(Doctor medico);
+    void deleteByMedico(Doctor medico);
 }

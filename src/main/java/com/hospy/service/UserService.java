@@ -53,12 +53,13 @@ public class UserService {
         if (rol == Role.PACIENTE && (req.getDocumento() == null || req.getDocumento().isBlank())) {
             throw new RuntimeException("El paciente requiere documento de identidad.");
         }
+        if (req.getPassword() == null || req.getPassword().isBlank()) {
+            throw new RuntimeException("Indica la contraseña.");
+        }
         User usuario = User.builder()
                 .nombre(req.getNombre())
                 .email(req.getEmail())
-                .password(passwordEncoder.encode(
-                        req.getPassword() != null && !req.getPassword().isBlank()
-                                ? req.getPassword() : "Medico123"))
+                .password(passwordEncoder.encode(req.getPassword()))
                 .rol(rol)
                 .telefono(req.getTelefono())
                 .activo(req.getActivo() != null ? req.getActivo() : true)
@@ -66,7 +67,15 @@ public class UserService {
         usuario = usuarioRepository.save(usuario);
         perfilService.crearPerfil(usuario, req);
         if (rol == Role.MEDICO) {
-            medicoRepository.findByUsuario(usuario).ifPresent(horarioService::asegurarHorarioLaboral);
+            medicoRepository.findByUsuario(usuario).ifPresent(medico -> {
+                if (req.getDiasAtencion() != null && !req.getDiasAtencion().isBlank()
+                        && req.getHoraInicio() != null && req.getHoraFin() != null) {
+                    horarioService.definirHorario(medico, req.getDiasAtencion(), req.getHoraInicio(),
+                            req.getHoraFin(), req.getHoraInicio2(), req.getHoraFin2());
+                } else {
+                    horarioService.asegurarHorarioLaboral(medico);
+                }
+            });
         }
         return toDtoByRol(usuario);
     }

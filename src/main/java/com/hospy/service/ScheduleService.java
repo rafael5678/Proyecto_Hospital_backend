@@ -70,6 +70,54 @@ public class ScheduleService {
     }
 
     @Transactional
+    public void definirHorario(Doctor medico, String dias, String inicio, String fin, String inicio2, String fin2) {
+        if (medico == null) return;
+        LocalTime h1 = parseHora(inicio);
+        LocalTime h2 = parseHora(fin);
+        if (h1 == null || h2 == null || !h2.isAfter(h1)) {
+            throw new RuntimeException("El horario necesita una hora de inicio y una hora de fin.");
+        }
+        LocalTime t1 = parseHora(inicio2);
+        LocalTime t2 = parseHora(fin2);
+        boolean segunda = t1 != null || t2 != null;
+        if (segunda && (t1 == null || t2 == null || !t2.isAfter(t1))) {
+            throw new RuntimeException("La segunda jornada necesita hora de inicio y hora de fin.");
+        }
+        List<Integer> lista = new java.util.ArrayList<>();
+        if (dias != null) {
+            for (String parte : dias.split(",")) {
+                String limpio = parte.trim();
+                if (limpio.isEmpty()) continue;
+                int dia = Integer.parseInt(limpio);
+                if (dia >= 1 && dia <= 7 && !lista.contains(dia)) lista.add(dia);
+            }
+        }
+        if (lista.isEmpty()) throw new RuntimeException("Indica los días de atención del médico.");
+        horarioRepository.deleteByMedico(medico);
+        for (int dia : lista) {
+            horarioRepository.save(bloque(medico, dia, h1, h2));
+            if (segunda) horarioRepository.save(bloque(medico, dia, t1, t2));
+        }
+    }
+
+    private Schedule bloque(Doctor medico, int dia, LocalTime inicio, LocalTime fin) {
+        return Schedule.builder()
+                .medico(medico).diaSemana(dia)
+                .horaInicio(inicio).horaFin(fin).disponible(true).build();
+    }
+
+    private LocalTime parseHora(String valor) {
+        if (valor == null || valor.isBlank()) return null;
+        String texto = valor.trim();
+        if (texto.matches("\\d{1,2}")) texto = texto + ":00";
+        if (texto.matches("\\d{1,2}:\\d{2}")) {
+            String[] p = texto.split(":");
+            return LocalTime.of(Integer.parseInt(p[0]), Integer.parseInt(p[1]));
+        }
+        return LocalTime.parse(texto);
+    }
+
+    @Transactional
     public void asegurarHorarioLaboral(Doctor medico) {
         if (medico == null || !horarioRepository.findByMedico(medico).isEmpty()) return;
         LocalTime mananaInicio = LocalTime.of(8, 0);

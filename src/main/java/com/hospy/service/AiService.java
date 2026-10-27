@@ -462,29 +462,29 @@ public class AiService {
     /* ============ Admin: alta de médico o paciente por conversación ============== */
     public AiAdminOperationResponse adminOperacion(AiAdminOperationRequest req) {
         String instruccion = req.getInstruccion() == null ? "" : req.getInstruccion().trim();
-        boolean altaNueva = esAltaNueva(instruccion);
-        AiAdminOperationResponse previo = altaNueva ? null : leerBorrador(req.getBorrador());
+        AiAdminOperationResponse previo = leerBorrador(req.getBorrador());
+        if (debeReiniciarAlta(instruccion, previo)) previo = null;
         final String system = """
-                Eres el asistente de altas del hospital Hospy. El administrador crea médicos y pacientes hablándote.
-                No inventes módulos, no des de baja usuarios y no crees administradores.
-                Conserva el borrador. El mensaje nuevo solo completa o corrige datos.
-                No inventes licencia, teléfono, documento, correo ni años de experiencia.
-                Especialidades válidas: Medicina General, Cardiología, Neurología, Dermatología,
-                Traumatología, Ortopedia, Pediatría, Ginecología, Oftalmología, Otorrinolaringología,
-                Gastroenterología, Endocrinología, Urología, Psiquiatría, Neumología,
-                Medicina Interna, Reumatología, Oncología, Nefrología, Infectología.
-                Obligatorios de un médico: nombre, email, especialidad, anosExperiencia, numeroLicencia, telefono.
-                Obligatorios de un paciente: nombre, email, documento, telefono.
-                Consultorio, biografía, ciudad, género, alergias y fecha de nacimiento son opcionales.
-                Si falta un obligatorio, accion=PREGUNTAR y mensaje pide solo lo que falta, en una frase.
-                Si está completo, accion=CREAR_MEDICO o CREAR_PACIENTE.
-                Si pide cancelar u otra cosa, accion=INFO.
-                Si no dan clave, passwordSugerida es Medico123 para médico y Paciente123 para paciente.
+                Eres Hospy y registras médicos y pacientes. Lees español natural, aunque venga incompleto o desordenado.
+                Ejemplos de cómo escribe el administrador, sin copiar estos nombres: "crea este paciente", "paciente: Ana López",
+                "el documento es 1087782595", "gmail ana@gmail.com", "la contraseña es Hospy2026", "12 años de experiencia",
+                "licencia MED-10", "teléfono 3001234567", "lunes a viernes de 8 a 12 y de 2 a 5".
+                No inventes correo, contraseña, documento, teléfono, licencia, años ni horario. Si no lo escribió, déjalo vacío.
+                Conserva el borrador. El mensaje nuevo solo agrega o corrige.
+                Si ya dijo que es paciente, accion=CREAR_PACIENTE. Si es médico, doctor o especialista, accion=CREAR_MEDICO.
+                Si pide cancelar, accion=INFO.
+                Especialidades válidas: Medicina General, Cardiología, Neurología, Dermatología, Traumatología,
+                Ortopedia, Pediatría, Ginecología, Oftalmología, Otorrinolaringología, Gastroenterología,
+                Endocrinología, Urología, Psiquiatría, Neumología, Medicina Interna, Reumatología, Oncología,
+                Nefrología, Infectología.
+                diasAtencion usa 1=lunes … 7=domingo, separados por coma. Horas en HH:mm.
+                Si hay dos jornadas, llena horaInicio2 y horaFin2. passwordSugerida es solo la clave que él escribió.
                 Devuelve SOLO JSON:
-                {"accion":"CREAR_MEDICO|CREAR_PACIENTE|PREGUNTAR|INFO","nombre":"","email":"",
-                 "especialidad":"","anosExperiencia":null,"numeroLicencia":"","telefono":"",
-                 "consultorio":"","biografia":"","documento":"","ciudad":"","genero":"",
-                 "alergias":"","fechaNacimiento":"","passwordSugerida":"","mensaje":""}
+                {"accion":"CREAR_MEDICO|CREAR_PACIENTE|INFO","nombre":"","email":"","passwordSugerida":"",
+                 "especialidad":"","anosExperiencia":null,"numeroLicencia":"","telefono":"","documento":"",
+                 "consultorio":"","biografia":"","ciudad":"","genero":"","alergias":"","fechaNacimiento":"",
+                 "diasAtencion":"","horaInicio":"","horaFin":"","horaInicio2":"","horaFin2":"","horario":"",
+                 "mensaje":"qué dato acabas de entender"}
                 """;
         String user = "Borrador actual:\n" + (previo == null ? "{}" : escribirBorrador(previo))
                 + "\nMensaje del administrador:\n" + instruccion;
@@ -512,6 +512,12 @@ public class AiService {
         if (!enBlanco(dichos.getTelefono())) destino.setTelefono(dichos.getTelefono());
         if (!enBlanco(dichos.getDocumento())) destino.setDocumento(dichos.getDocumento());
         if (!enBlanco(dichos.getPasswordSugerida())) destino.setPasswordSugerida(dichos.getPasswordSugerida());
+        if (!enBlanco(dichos.getDiasAtencion())) destino.setDiasAtencion(dichos.getDiasAtencion());
+        if (!enBlanco(dichos.getHoraInicio())) destino.setHoraInicio(dichos.getHoraInicio());
+        if (!enBlanco(dichos.getHoraFin())) destino.setHoraFin(dichos.getHoraFin());
+        if (!enBlanco(dichos.getHoraInicio2())) destino.setHoraInicio2(dichos.getHoraInicio2());
+        if (!enBlanco(dichos.getHoraFin2())) destino.setHoraFin2(dichos.getHoraFin2());
+        if (!enBlanco(dichos.getHorario())) destino.setHorario(dichos.getHorario());
         if (dichos.getAnosExperiencia() != null) destino.setAnosExperiencia(dichos.getAnosExperiencia());
         if (!enBlanco(dichos.getAccion())) destino.setAccion(dichos.getAccion());
     }
@@ -550,6 +556,17 @@ public class AiService {
         return pideAlta && diceQuien;
     }
 
+    private boolean debeReiniciarAlta(String texto, AiAdminOperationResponse previo) {
+        String t = texto == null ? "" : sinAcentoAdmin(texto).toLowerCase();
+        if (t.contains("cancela") || t.contains("olvidalo") || t.contains("empezar de nuevo") || t.contains("otra persona")) {
+            return true;
+        }
+        if (previo == null || !esAltaNueva(texto)) return false;
+        String nombre = extraerNombreAlta(texto);
+        return nombre != null && !enBlanco(previo.getNombre())
+                && !sinAcentoAdmin(nombre).equalsIgnoreCase(sinAcentoAdmin(previo.getNombre()));
+    }
+
     private AiAdminOperationResponse fusionarAlta(AiAdminOperationResponse previo, AiAdminOperationResponse nuevo) {
         if (nuevo == null) nuevo = new AiAdminOperationResponse();
         if (previo == null) return nuevo;
@@ -566,6 +583,12 @@ public class AiService {
         if (enBlanco(nuevo.getAlergias())) nuevo.setAlergias(previo.getAlergias());
         if (enBlanco(nuevo.getFechaNacimiento())) nuevo.setFechaNacimiento(previo.getFechaNacimiento());
         if (enBlanco(nuevo.getPasswordSugerida())) nuevo.setPasswordSugerida(previo.getPasswordSugerida());
+        if (enBlanco(nuevo.getDiasAtencion())) nuevo.setDiasAtencion(previo.getDiasAtencion());
+        if (enBlanco(nuevo.getHoraInicio())) nuevo.setHoraInicio(previo.getHoraInicio());
+        if (enBlanco(nuevo.getHoraFin())) nuevo.setHoraFin(previo.getHoraFin());
+        if (enBlanco(nuevo.getHoraInicio2())) nuevo.setHoraInicio2(previo.getHoraInicio2());
+        if (enBlanco(nuevo.getHoraFin2())) nuevo.setHoraFin2(previo.getHoraFin2());
+        if (enBlanco(nuevo.getHorario())) nuevo.setHorario(previo.getHorario());
         if (nuevo.getAnosExperiencia() == null) nuevo.setAnosExperiencia(previo.getAnosExperiencia());
         if (enBlanco(nuevo.getAccion()) || "PREGUNTAR".equalsIgnoreCase(nuevo.getAccion())
                 || "INFO".equalsIgnoreCase(nuevo.getAccion())) {
@@ -586,63 +609,129 @@ public class AiService {
         }
         if (t.contains("paciente")) r.setAccion("CREAR_PACIENTE");
         else if (t.contains("medic") || t.contains("doctor") || t.contains("especialista")) r.setAccion("CREAR_MEDICO");
-        String nombre = extraerGrupo(original, "(?i)(?:llamad[oa]|nombre)\\s+([\\p{L}][\\p{L} .'-]{2,80})");
-        if (nombre != null) {
-            nombre = nombre.split("(?i)\\s+(con|de|correo|email|documento|tel[eé]fono|celular|licencia|especialidad)\\b")[0].trim();
-            if (!nombre.isBlank()) r.setNombre(nombre);
-        }
+        String nombre = extraerNombreAlta(original);
+        if (nombre != null) r.setNombre(nombre);
         String email = extraerGrupo(original, "([\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,})");
         if (email != null) r.setEmail(email);
-        String anos = extraerGrupo(t, "(\\d{1,2})\\s*anos");
+        String anos = extraerGrupo(t, "(?:experiencia\\s*(?:de)?\\s*)?(\\d{1,2})\\s*anos");
+        if (anos == null) anos = extraerGrupo(t, "experiencia\\s*(?:de|:)?\\s*(\\d{1,2})");
         if (anos != null) r.setAnosExperiencia(Integer.parseInt(anos));
-        String licencia = extraerGrupo(original, "(?i)licencia\\s*[:#]?\\s*([A-Za-z0-9-]{3,30})");
+        String licencia = extraerGrupo(original, "(?i)licencia\\s*(?:es|numero|n[uú]mero|:)?\\s*[:#]?\\s*([A-Za-z0-9-]{3,30})");
         if (licencia != null) r.setNumeroLicencia(licencia);
-        String documento = extraerGrupo(original, "(?i)(?:documento|c[eé]dula|cedula|dni)\\s*[:#]?\\s*([A-Za-z0-9-]{5,20})");
+        String documento = extraerGrupo(original, "(?i)(?:documento|c[eé]dula|cedula|dni)(?:\\s+de\\s+identidad)?\\s*(?:es|n[uú]mero|:)?\\s*[:#]?\\s*([A-Za-z0-9-]{5,20})");
         if (documento != null) r.setDocumento(documento);
-        String telefono = extraerGrupo(original, "(?i)(?:tel[eé]fono|celular|cel)\\s*[:#]?\\s*([0-9][0-9 \\-]{6,18})");
+        String telefono = extraerGrupo(original, "(?i)(?:tel[eé]fono|celular|cel|whatsapp)\\s*(?:es|:)?\\s*([0-9][0-9 \\-]{6,18})");
         if (telefono != null) r.setTelefono(telefono.replaceAll("[^0-9]", ""));
-        String clave = extraerGrupo(original, "(?i)(?:clave|contrase[nñ]a|password)\\s+([^\\s,.]{6,40})");
-        if (clave != null) r.setPasswordSugerida(clave);
-        String esp = normalizarEspecialidad(original);
+        String clave = extraerGrupo(original, "(?i)(?:clave|contrase[nñ]a|password)\\s*(?:es|:)?\\s*(\\S{6,40})");
+        if (clave != null && !clave.equalsIgnoreCase("es")) r.setPasswordSugerida(clave);
+        String esp = especialidadEnTexto(original);
         if (esp != null) r.setEspecialidad(esp);
+        completarHorario(r, original);
         r.setModoDemo(true);
         return r;
+    }
+
+    private String extraerNombreAlta(String original) {
+        String nombre = extraerGrupo(original, "(?i)(?:paciente|m[eé]dico|doctor)\\s*[:\\-]\\s*([\\p{L}][\\p{L} .'-]{2,80})");
+        if (nombre == null) {
+            nombre = extraerGrupo(original, "(?i)(?:con el nombre|nombre|llamad[oa])\\s*[:\\-]?\\s*([\\p{L}][\\p{L} .'-]{2,80})");
+        }
+        if (nombre == null) return null;
+        nombre = nombre.split("(?i)\\s+(con|correo|email|gmail|documento|tel[eé]fono|celular|licencia|especialidad|clave|contrase)\\b")[0].trim();
+        nombre = nombre.replaceAll("[,.:;]+$", "").trim();
+        return nombre.isBlank() ? null : nombre;
+    }
+
+    private String especialidadEnTexto(String texto) {
+        if (texto == null) return null;
+        String n = sinAcentoAdmin(texto).toLowerCase();
+        String mejor = null;
+        int mejorLargo = 0;
+        for (String especialidad : ESPECIALIDADES_ADMIN) {
+            String e = sinAcentoAdmin(especialidad).toLowerCase();
+            if (n.contains(e) && e.length() > mejorLargo) {
+                mejor = especialidad;
+                mejorLargo = e.length();
+            }
+        }
+        return mejor;
+    }
+
+    private void completarHorario(AiAdminOperationResponse r, String original) {
+        String t = sinAcentoAdmin(original).toLowerCase();
+        if (enBlanco(r.getDiasAtencion())) {
+            if (t.contains("lunes a domingo") || t.contains("todos los dias")) r.setDiasAtencion("1,2,3,4,5,6,7");
+            else if (t.contains("lunes a sabado")) r.setDiasAtencion("1,2,3,4,5,6");
+            else if (t.contains("lunes a viernes") || t.contains("entre semana")) r.setDiasAtencion("1,2,3,4,5");
+        }
+        Matcher rangos = Pattern.compile("(\\d{1,2})(?::(\\d{2}))?\\s*(?:a|hasta|-)\\s*(\\d{1,2})(?::(\\d{2}))?").matcher(t);
+        int n = 0;
+        while (rangos.find() && n < 2) {
+            int desde = Integer.parseInt(rangos.group(1));
+            int hasta = Integer.parseInt(rangos.group(3));
+            if (desde > 23 || hasta > 23) {
+                n++;
+                continue;
+            }
+            if (n == 1 && desde <= 6) desde += 12;
+            if (n == 1 && hasta <= 7) hasta += 12;
+            String ini = String.format("%02d:%s", desde, rangos.group(2) == null ? "00" : rangos.group(2));
+            String fin = String.format("%02d:%s", hasta, rangos.group(4) == null ? "00" : rangos.group(4));
+            if (n == 0 && enBlanco(r.getHoraInicio())) {
+                r.setHoraInicio(ini);
+                r.setHoraFin(fin);
+            } else if (n == 1 && enBlanco(r.getHoraInicio2())) {
+                r.setHoraInicio2(ini);
+                r.setHoraFin2(fin);
+            }
+            n++;
+        }
+        if (!enBlanco(r.getDiasAtencion()) || !enBlanco(r.getHoraInicio())) {
+            r.setHorario(textoHorario(r));
+        }
+    }
+
+    private String textoHorario(AiAdminOperationResponse r) {
+        String dias = switch (nvl(r.getDiasAtencion())) {
+            case "1,2,3,4,5" -> "lunes a viernes";
+            case "1,2,3,4,5,6" -> "lunes a sábado";
+            case "1,2,3,4,5,6,7" -> "lunes a domingo";
+            default -> "días " + nvl(r.getDiasAtencion());
+        };
+        String horas = nvl(r.getHoraInicio()) + " a " + nvl(r.getHoraFin());
+        if (!enBlanco(r.getHoraInicio2())) horas += " y " + r.getHoraInicio2() + " a " + r.getHoraFin2();
+        return dias + ", " + horas;
     }
 
     private AiAdminOperationResponse exigirDatosAlta(AiAdminOperationResponse r) {
         if (r == null) r = new AiAdminOperationResponse();
         String accion = r.getAccion() == null ? "" : r.getAccion().trim().toUpperCase();
-        if ("INFO".equals(accion)) {
+        if ("INFO".equals(accion) && enBlanco(r.getNombre()) && enBlanco(r.getEmail()) && enBlanco(r.getDocumento())) {
             r.setAccion("INFO");
-            if (enBlanco(r.getMensaje())) {
-                r.setMensaje("Puedo crear un médico o un paciente. Dime el nombre y te pido lo que falte.");
-            }
+            r.setMensaje("Dime si el registro es de un médico o de un paciente, y el nombre.");
             return r;
         }
         if (!"CREAR_MEDICO".equals(accion) && !"CREAR_PACIENTE".equals(accion) && !"PREGUNTAR".equals(accion)) {
-            r.setAccion("INFO");
-            r.setMensaje("Dime si quieres crear un médico o un paciente, y el nombre.");
-            return r;
-        }
-        if ("PREGUNTAR".equals(accion) && enBlanco(r.getEspecialidad()) && enBlanco(r.getDocumento())
-                && enBlanco(r.getNumeroLicencia())) {
-            r.setMensaje("¿El alta es de un médico o de un paciente?");
+            r.setAccion("PREGUNTAR");
+            r.setMensaje("¿El registro es de un médico o de un paciente?");
             return r;
         }
         if (r.getEmail() != null) r.setEmail(r.getEmail().trim().toLowerCase());
         if (r.getTelefono() != null) r.setTelefono(r.getTelefono().replaceAll("[^0-9]", ""));
-        String esp = normalizarEspecialidad(r.getEspecialidad());
+        if (r.getPasswordSugerida() != null) r.setPasswordSugerida(r.getPasswordSugerida().trim());
+        String esp = especialidadEnTexto(r.getEspecialidad());
+        if (esp == null) esp = normalizarEspecialidad(r.getEspecialidad());
         if (esp != null) r.setEspecialidad(esp);
-        boolean medico = "CREAR_MEDICO".equals(accion) || ("PREGUNTAR".equals(accion) && !enBlanco(r.getEspecialidad()));
-        if ("PREGUNTAR".equals(accion) && !enBlanco(r.getDocumento()) && enBlanco(r.getEspecialidad())) medico = false;
+        boolean medico = "CREAR_MEDICO".equals(accion);
+        if ("PREGUNTAR".equals(accion)) medico = !enBlanco(r.getEspecialidad()) || !enBlanco(r.getNumeroLicencia());
         if ("CREAR_PACIENTE".equals(accion)) medico = false;
-        if ("CREAR_MEDICO".equals(accion)) medico = true;
         List<String> faltan = new ArrayList<>();
         if (enBlanco(r.getNombre())) faltan.add("el nombre completo");
         if (enBlanco(r.getEmail()) || !r.getEmail().contains("@")) faltan.add("el correo");
+        if (enBlanco(r.getPasswordSugerida()) || r.getPasswordSugerida().length() < 6) faltan.add("la contraseña");
         if (medico) {
             r.setAccion("CREAR_MEDICO");
-            if (enBlanco(r.getEspecialidad()) || normalizarEspecialidad(r.getEspecialidad()) == null) {
+            if (esp == null) {
                 r.setEspecialidad(null);
                 faltan.add("la especialidad");
             }
@@ -651,28 +740,35 @@ public class AiService {
             }
             if (enBlanco(r.getNumeroLicencia())) faltan.add("el número de licencia");
             if (enBlanco(r.getTelefono()) || r.getTelefono().length() < 7) faltan.add("el teléfono");
-            if (enBlanco(r.getPasswordSugerida())) r.setPasswordSugerida("Medico123");
+            if (enBlanco(r.getDiasAtencion()) || enBlanco(r.getHoraInicio()) || enBlanco(r.getHoraFin())) {
+                faltan.add("el horario de atención, con los días y las horas");
+            }
         } else {
             r.setAccion("CREAR_PACIENTE");
             if (enBlanco(r.getDocumento())) faltan.add("el documento de identidad");
             if (enBlanco(r.getTelefono()) || r.getTelefono().length() < 7) faltan.add("el teléfono");
-            if (enBlanco(r.getPasswordSugerida())) r.setPasswordSugerida("Paciente123");
         }
         if (!faltan.isEmpty()) {
             r.setAccion("PREGUNTAR");
-            String quien = enBlanco(r.getNombre()) ? (medico ? "el médico" : "el paciente") : r.getNombre();
-            r.setMensaje("Para crear a " + quien + " me falta " + juntarFaltantes(faltan) + ".");
+            String tipo = medico ? "médico" : "paciente";
+            if (enBlanco(r.getNombre())) {
+                r.setMensaje("Para registrar al " + tipo + " me falta " + juntarFaltantes(faltan) + ". Puedes escribirlos como quieras.");
+            } else {
+                r.setMensaje(r.getNombre() + " ya quedó anotado como " + tipo + ". Para registrarlo me falta "
+                        + juntarFaltantes(faltan) + ". Puedes escribirlos como quieras.");
+            }
             return r;
         }
         if (medico) {
-            r.setMensaje("Creo al médico " + r.getNombre() + ", " + r.getEspecialidad()
+            r.setHorario(textoHorario(r));
+            r.setMensaje("Registro al médico " + r.getNombre() + ", " + r.getEspecialidad()
                     + ", " + r.getAnosExperiencia() + " años de experiencia, licencia " + r.getNumeroLicencia()
-                    + ", teléfono " + r.getTelefono() + ", correo " + r.getEmail()
-                    + ". Clave inicial: " + r.getPasswordSugerida() + ".");
+                    + ", horario " + r.getHorario() + ", teléfono " + r.getTelefono()
+                    + ", correo " + r.getEmail() + ". La contraseña queda guardada y no se vuelve a mostrar.");
         } else {
-            r.setMensaje("Creo al paciente " + r.getNombre() + ", documento " + r.getDocumento()
+            r.setMensaje("Registro al paciente " + r.getNombre() + ", documento " + r.getDocumento()
                     + ", teléfono " + r.getTelefono() + ", correo " + r.getEmail()
-                    + ". Clave inicial: " + r.getPasswordSugerida() + ".");
+                    + ". La contraseña queda guardada y no se vuelve a mostrar.");
         }
         return r;
     }
