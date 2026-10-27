@@ -112,8 +112,10 @@ public class AiService {
             }
         }
         if (!hayOpenAi()) {
-            return new AiTranscriptionResponse("", true,
-                    "Configura GEMINI_API_KEY para transcribir el audio. También puedes usar la voz del navegador.");
+            String mensaje = hayGemini()
+                    ? "Gemini no pudo transcribir el audio en este momento; puede estar en su límite de uso. Intenta en un minuto o escribe los datos."
+                    : "Configura GEMINI_API_KEY para transcribir el audio. También puedes usar la voz del navegador.";
+            return new AiTranscriptionResponse("", true, mensaje);
         }
         String boundary = "HospyBoundary" + UUID.randomUUID();
         try {
