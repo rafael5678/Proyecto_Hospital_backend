@@ -261,6 +261,12 @@ public class AiService {
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8))
                     .build();
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() == 429 || resp.statusCode() == 503) {
+                long espera = esperaSugeridaGemini(resp.body());
+                log.info("Gemini {} status={}, reintento en {} ms", modelo, resp.statusCode(), espera);
+                Thread.sleep(espera);
+                resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            }
             if (resp.statusCode() != 200) {
                 String snippet = resp.body() == null ? "" : resp.body().substring(0, Math.min(280, resp.body().length()));
                 log.warn("Gemini {} status={} body={}", modelo, resp.statusCode(), snippet);
@@ -277,6 +283,12 @@ public class AiService {
             log.warn("Excepción Gemini {}: {}", modelo, ex.getMessage());
             return Optional.empty();
         }
+    }
+
+    private long esperaSugeridaGemini(String cuerpo) {
+        Matcher m = Pattern.compile("\"retryDelay\"\\s*:\\s*\"(\\d+)(?:\\.\\d+)?s\"").matcher(cuerpo == null ? "" : cuerpo);
+        long segundos = m.find() ? Long.parseLong(m.group(1)) : 2;
+        return Math.min(Math.max(segundos, 1), 8) * 1000;
     }
 
     private Optional<String> transcribirConGemini(byte[] audio, String contentType) {
@@ -845,8 +857,8 @@ public class AiService {
             return AiAdminOperationResponse.builder().accion("INFO").modoDemo(true)
                     .mensaje("Listo. Dime si el alta es de un médico o de un paciente.").build();
         }
-        if (t.contains("paciente")) r.setAccion("CREAR_PACIENTE");
-        else if (t.contains("medic") || t.contains("doctor") || t.contains("especialista")) r.setAccion("CREAR_MEDICO");
+        String rol = rolMencionadoPrimero(t);
+        if (rol != null) r.setAccion(rol);
         String nombre = extraerNombreAlta(original);
         if (nombre != null) r.setNombre(nombre);
         String email = correoEnTexto(original);
@@ -862,7 +874,8 @@ public class AiService {
         String telefono = extraerGrupo(original, "(?i)(?:tel[eé]fono|celular|cel|whatsapp)\\s*(?:es|:)?\\s*([0-9][0-9 \\-]{6,18})");
         if (telefono != null) r.setTelefono(telefono.replaceAll("[^0-9]", ""));
         String clave = extraerGrupo(original, "(?i)(?:clave|contrase[nñ]a|password)\\s*(?:es|:)?\\s*(\\S{6,40})");
-        if (clave != null && !clave.equalsIgnoreCase("es")) r.setPasswordSugerida(clave);
+        if (clave != null) clave = clave.replaceAll("[,.;:]+$", "");
+        if (clave != null && clave.length() >= 6) r.setPasswordSugerida(clave);
         String esp = especialidadEnTexto(original);
         if (esp != null) r.setEspecialidad(esp);
         Matcher ms = Pattern.compile("(?i)(?:sangre|rh|sangu[ií]neo)\\s*[,:]?\\s*(?:es\\s*)?[,:]?\\s*(AB|A|B|O)\\s*([+-]|positivo|negativo)").matcher(original);
@@ -878,28 +891,75 @@ public class AiService {
         if (fechaHablada != null) r.setFechaNacimiento(fechaHablada);
         String fin = "(?=[.,;\\n]|\\s+y\\s+(?:el|la|mi|las|los)\\b|$)";
         String ciudad = extraerGrupo(original, "(?i)ciudad\\s*[,:]?\\s*(?:es\\s+)?(?:(?:la\\s+)?ciudad\\s+de\\s+|de\\s+)?([\\p{L}][\\p{L} '-]{1,40}?)" + fin);
+        if (ciudad == null) ciudad = extraerGrupo(original, "(?i:vive\\s+en|reside\\s+en)\\s+(?:la\\s+ciudad\\s+de\\s+)?(\\p{Lu}\\p{L}+(?:\\s+\\p{Lu}\\p{L}+)?)(?=[.,;\\n]|\\s|$)");
+        if (ciudad == null) ciudad = ciudadConocida(original);
         if (ciudad != null) r.setCiudad(ciudad);
         String direccion = extraerGrupo(original, "(?i)direcci[oó]n\\s*(?:es|:)?\\s*(?:ah\\s+|eh\\s+)?([\\p{L}0-9#][^.;\\n]{2,80}?)"
                 + "(?=,\\s*(?:mi|su|la|el|y|ciudad|tel[eé]fono|g[eé]nero|alergias?)\\b|\\s+y\\s+(?:mi|su|la|el)\\b|[.;\\n]|$)");
+        if (direccion == null) {
+            direccion = extraerGrupo(original, "(?i:vive\\s+en|reside\\s+en|queda\\s+en)\\s+(?:la\\s+|el\\s+)?((?i:calle|carrera|cra\\.?|kr|avenida|av\\.?|transversal|diagonal|manzana|mz|barrio)\\s*[^.;\\n]{2,70}?)(?=\\s+en\\s+\\p{Lu}|,\\s*(?i:su|mi|la|el|y)\\b|[.;\\n]|$)");
+        }
         if (direccion != null) r.setDireccion(direccion);
-        if (t.matches("(?s).*\\b(no tengo (ninguna|alergias)|ninguna alergia|sin alergias|alergias?[,:]?\\s*(no|ninguna))\\b.*")) {
+        String alergia = extraerGrupo(original, "(?i)(?:al[eé]rgic[oa]s?\\s+a|alergias?\\s+(?:a|al|es|son|:))\\s+(?:la\\s+|el\\s+|los\\s+|las\\s+)?(?!ninguna|nada\\b|no\\b)([\\p{L}][\\p{L} ,y]{1,60}?)" + fin);
+        if (alergia != null) r.setAlergias(alergia);
+        else if (t.matches("(?s).*\\b(no tengo (ninguna|alergias)|ninguna alergia|sin alergias|no tiene alergias|alergias?[,:]?\\s*(no|ninguna|nada))\\b.*")) {
             r.setAlergias("Ninguna");
         }
         String contacto = extraerGrupo(original, "(?i)contacto de emergencia\\s*[,:]?\\s*(?:es\\s+)?(?:ah\\s+|eh\\s+)?([\\p{L}][\\p{L} '-]{1,50}?)" + fin);
         if (contacto != null) r.setContactoEmergencia(contacto);
-        String telEmergencia = extraerGrupo(original, "(?i)(?:tel[eé]fono de emergencia|contacto de emergencia)\\s*(?:es|:)?\\s*(?:ah\\s+|eh\\s+)?([0-9][0-9 \\-]{6,18})");
+        String telEmergencia = extraerGrupo(original, "(?i)(?:tel[eé]fono de emergencia|contacto de emergencia)[^.\\n\\d]{0,40}?([0-9][0-9 \\-]{6,18}[0-9])");
         if (telEmergencia != null) r.setTelefonoEmergencia(telEmergencia.replaceAll("[^0-9]", ""));
+        Matcher llamar = Pattern.compile("(?i)(?:emergencia|urgencia)s?[^.\\n]{0,25}?(?:llamar|avisar|contactar|comunicarse\\s+con)\\s+a\\s+([\\p{L}][\\p{L} '-]{1,40}?)\\s*(?:,|al|al\\s+n[uú]mero|en\\s+el)\\s*([0-9][0-9 \\-]{6,18}[0-9])").matcher(original);
+        while (llamar.find()) {
+            r.setContactoEmergencia(llamar.group(1).trim());
+            r.setTelefonoEmergencia(llamar.group(2).replaceAll("[^0-9]", ""));
+        }
         completarHorario(r, original);
         r.setModoDemo(true);
         return r;
     }
 
+    private String rolMencionadoPrimero(String t) {
+        Matcher paciente = Pattern.compile("\\bpacientes?\\b").matcher(t);
+        Matcher medico = Pattern.compile("\\b(medic[oa]s?|doctor[a]?|dr[a]?\\.|especialista)\\b").matcher(t);
+        int p = paciente.find() ? paciente.start() : Integer.MAX_VALUE;
+        int m = medico.find() ? medico.start() : Integer.MAX_VALUE;
+        if (p == Integer.MAX_VALUE && m == Integer.MAX_VALUE) return null;
+        return p < m ? "CREAR_PACIENTE" : "CREAR_MEDICO";
+    }
+
+    private static final List<String> CIUDADES = List.of(
+            "Bogotá", "Medellín", "Cali", "Barranquilla", "Cartagena", "Bucaramanga", "Pereira", "Manizales", "Pasto",
+            "Cúcuta", "Ibagué", "Santa Marta", "Villavicencio", "Armenia", "Neiva", "Popayán", "Montería", "Valledupar",
+            "Sincelejo", "Tunja", "Florencia", "Riohacha", "Quibdó", "Yopal", "Mocoa", "Leticia", "Palmira",
+            "Buenaventura", "Tuluá", "Soacha", "Bello", "Envigado", "Itagüí", "Ipiales", "Tumaco", "Jamundí", "Yumbo");
+
+    private String ciudadConocida(String texto) {
+        String n = sinAcentoAdmin(texto).toLowerCase();
+        String encontrada = null;
+        int ultima = -1;
+        for (String ciudad : CIUDADES) {
+            Matcher m = Pattern.compile("\\b" + Pattern.quote(sinAcentoAdmin(ciudad).toLowerCase()) + "\\b").matcher(n);
+            while (m.find()) {
+                if (m.start() > ultima) {
+                    ultima = m.start();
+                    encontrada = ciudad;
+                }
+            }
+        }
+        return encontrada;
+    }
+
     private String extraerNombreAlta(String original) {
         String letras = "([\\p{L}][\\p{L} '-]{2,80})";
-        String nombre = extraerGrupo(original, "(?i)(?:paciente|m[eé]dico|doctor|doctora)\\s*[:\\-]\\s*" + letras);
-        if (nombre == null) {
-            nombre = extraerGrupo(original, "(?i)(?:mi nombre es|su nombre es|el nombre es|nombre completo es|con el nombre(?: de)?|se llama|llamad[oa]|nombre\\s*:|(?:^|[.,;\\n]\\s*)nombre(?:\\s+completo)?)\\s*" + letras);
-        }
+        String prefijo = "(?:(?:dr|dra|doctor|doctora)\\.?\\s+)?";
+        String nombre = extraerGrupo(original, "(?i)(?:"
+                + "(?:paciente|m[eé]dic[oa]|doctor[a]?|especialista)\\s*[:\\-]\\s*"
+                + "|(?:crea(?:r)?|registra(?:r)?|inscribe|inscribir|dar\\s+de\\s+alta|da\\s+de\\s+alta)\\s+(?:(?:a\\s+la|al|a|la|el)\\s+)?(?:nuev[oa]\\s+)?(?:paciente|m[eé]dic[oa]|doctor[a]?|especialista)\\s+(?!nuev|por\\b|que\\b)"
+                + "|(?:es\\s+)?(?:el|la)\\s+(?:doctor[a]?|dr[a]?\\.?)\\s+"
+                + "|mi nombre es|su nombre es|el nombre es|nombre completo es|con el nombre(?: de)?|se llama|llamad[oa]|nombre\\s*:"
+                + "|(?:^|[.,;\\n]\\s*)nombre(?:\\s+completo)?"
+                + ")\\s*" + prefijo + letras);
         if (nombre == null) return null;
         nombre = nombre.split("(?i)\\s+(con|y|es|mi|su|el|la|correo|email|gmail|documento|tel[eé]fono|celular|licencia|especialidad|clave|contrase\\p{L}*|que|tiene|atiende)\\b")[0].trim();
         nombre = nombre.replaceAll("[,.:;]+$", "").trim();
@@ -975,38 +1035,77 @@ public class AiService {
         return null;
     }
 
+    private static final List<String> DIAS = List.of("lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo");
+    private static final List<String> NOMBRES_DIAS = List.of("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo");
+
     private void completarHorario(AiAdminOperationResponse r, String original) {
         String t = sinAcentoAdmin(original).toLowerCase();
-        if (enBlanco(r.getDiasAtencion())) {
-            if (t.contains("lunes a domingo") || t.contains("todos los dias")) r.setDiasAtencion("1,2,3,4,5,6,7");
-            else if (t.contains("lunes a sabado")) r.setDiasAtencion("1,2,3,4,5,6");
-            else if (t.contains("lunes a viernes") || t.contains("entre semana")) r.setDiasAtencion("1,2,3,4,5");
+        if (!t.matches("(?s).*\\b(horario|horarios|atiende|atendera|trabaja|consulta|turno|jornada|lunes|martes|miercoles|jueves|viernes|sabado|domingo|entre semana|todos los dias)\\b.*")) {
+            return;
         }
-        Matcher rangos = Pattern.compile("(\\d{1,2})(?::(\\d{2}))?\\s*(?:a|hasta|-)\\s*(\\d{1,2})(?::(\\d{2}))?").matcher(t);
-        int n = 0;
-        while (rangos.find() && n < 2) {
+        String dias = null;
+        String diaRegex = String.join("|", DIAS);
+        Matcher rango = Pattern.compile("\\b(" + diaRegex + ")\\s+(?:a|al|hasta)\\s+(?:el\\s+)?(" + diaRegex + ")\\b").matcher(t);
+        while (rango.find()) {
+            int desde = DIAS.indexOf(rango.group(1)) + 1;
+            int hasta = DIAS.indexOf(rango.group(2)) + 1;
+            List<String> lista = new ArrayList<>();
+            for (int d = desde; d <= hasta; d++) lista.add(String.valueOf(d));
+            if (!lista.isEmpty()) dias = String.join(",", lista);
+        }
+        if (dias == null && t.contains("todos los dias")) dias = "1,2,3,4,5,6,7";
+        if (dias == null && t.contains("entre semana")) dias = "1,2,3,4,5";
+        if (dias == null) {
+            Matcher sueltos = Pattern.compile("\\b(" + diaRegex + ")\\b").matcher(t);
+            java.util.TreeSet<Integer> encontrados = new java.util.TreeSet<>();
+            while (sueltos.find()) encontrados.add(DIAS.indexOf(sueltos.group(1)) + 1);
+            if (!encontrados.isEmpty()) {
+                dias = String.join(",", encontrados.stream().map(String::valueOf).toList());
+            }
+        }
+        if (dias != null) r.setDiasAtencion(dias);
+
+        String meridiano = "(de la manana|de la tarde|de la noche|del mediodia|am|pm|a\\.\\s?m\\.?|p\\.\\s?m\\.?)?";
+        Matcher rangos = Pattern.compile("(?:\\b(?:de|desde|entre)\\s+(?:las\\s+)?)(\\d{1,2})(?::(\\d{2}))?\\s*" + meridiano
+                + "\\s*(?:a|hasta|y\\s+las|-)\\s*(?:las\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*" + meridiano).matcher(t);
+        List<String[]> jornadas = new ArrayList<>();
+        while (rangos.find()) {
             int desde = Integer.parseInt(rangos.group(1));
-            int hasta = Integer.parseInt(rangos.group(3));
-            if (desde > 23 || hasta > 23) {
-                n++;
-                continue;
-            }
-            if (n == 1 && desde <= 6) desde += 12;
-            if (n == 1 && hasta <= 7) hasta += 12;
-            String ini = String.format("%02d:%s", desde, rangos.group(2) == null ? "00" : rangos.group(2));
-            String fin = String.format("%02d:%s", hasta, rangos.group(4) == null ? "00" : rangos.group(4));
-            if (n == 0 && enBlanco(r.getHoraInicio())) {
-                r.setHoraInicio(ini);
-                r.setHoraFin(fin);
-            } else if (n == 1 && enBlanco(r.getHoraInicio2())) {
-                r.setHoraInicio2(ini);
-                r.setHoraFin2(fin);
-            }
-            n++;
+            int hasta = Integer.parseInt(rangos.group(4));
+            if (desde > 23 || hasta > 23) continue;
+            desde = ajustarMeridiano(desde, rangos.group(3));
+            hasta = ajustarMeridiano(hasta, rangos.group(6));
+            boolean sinMeridiano = rangos.group(3) == null && rangos.group(6) == null;
+            if (sinMeridiano && !jornadas.isEmpty() && desde <= 7) desde += 12;
+            if (hasta <= desde && hasta + 12 <= 23) hasta += 12;
+            if (hasta <= desde) continue;
+            jornadas.add(new String[]{
+                    String.format("%02d:%s", desde, rangos.group(2) == null ? "00" : rangos.group(2)),
+                    String.format("%02d:%s", hasta, rangos.group(5) == null ? "00" : rangos.group(5))});
         }
-        if (!enBlanco(r.getDiasAtencion()) || !enBlanco(r.getHoraInicio())) {
+        if (!jornadas.isEmpty()) {
+            List<String[]> ultimas = jornadas.subList(Math.max(0, jornadas.size() - 2), jornadas.size());
+            r.setHoraInicio(ultimas.get(0)[0]);
+            r.setHoraFin(ultimas.get(0)[1]);
+            if (ultimas.size() > 1) {
+                r.setHoraInicio2(ultimas.get(1)[0]);
+                r.setHoraFin2(ultimas.get(1)[1]);
+            } else {
+                r.setHoraInicio2(null);
+                r.setHoraFin2(null);
+            }
+        }
+        if (!enBlanco(r.getDiasAtencion()) && !enBlanco(r.getHoraInicio())) {
             r.setHorario(textoHorario(r));
         }
+    }
+
+    private int ajustarMeridiano(int hora, String meridiano) {
+        if (meridiano == null) return hora;
+        String m = meridiano.replace(" ", "").replace(".", "");
+        if ((m.contains("tarde") || m.contains("noche") || m.equals("pm")) && hora < 12) return hora + 12;
+        if ((m.contains("manana") || m.equals("am")) && hora == 12) return 0;
+        return hora;
     }
 
     private String textoHorario(AiAdminOperationResponse r) {
@@ -1014,7 +1113,14 @@ public class AiService {
             case "1,2,3,4,5" -> "lunes a viernes";
             case "1,2,3,4,5,6" -> "lunes a sábado";
             case "1,2,3,4,5,6,7" -> "lunes a domingo";
-            default -> "días " + nvl(r.getDiasAtencion());
+            default -> {
+                List<String> nombres = new ArrayList<>();
+                for (String d : nvl(r.getDiasAtencion()).split(",")) {
+                    String limpio = d.trim();
+                    if (limpio.matches("[1-7]")) nombres.add(NOMBRES_DIAS.get(Integer.parseInt(limpio) - 1));
+                }
+                yield nombres.isEmpty() ? "días por confirmar" : String.join(", ", nombres);
+            }
         };
         String horas = nvl(r.getHoraInicio()) + " a " + nvl(r.getHoraFin());
         if (!enBlanco(r.getHoraInicio2())) horas += " y " + r.getHoraInicio2() + " a " + r.getHoraFin2();
