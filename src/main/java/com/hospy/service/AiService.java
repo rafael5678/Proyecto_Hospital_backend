@@ -43,6 +43,12 @@ public class AiService {
     @Value("${ai.gemini.fallback-models:gemini-3.8-flash}")
     private String geminiFallbackModels;
 
+    /** Modelo con cuota gratuita mucho mayor (500 al día frente a 20): primero en tareas simples, último respaldo en las demás. */
+    @Value("${ai.gemini.light-model:gemini-3.5-flash-lite}")
+    private String geminiLightModel;
+
+    private final Map<String, Long> modeloAgotadoHasta = new java.util.concurrent.ConcurrentHashMap<>();
+
     @Value("${ai.gemini.url:https://generativelanguage.googleapis.com/v1beta/models}")
     private String geminiBaseUrl;
 
@@ -158,8 +164,12 @@ public class AiService {
 
     /* ============ Llamada genérica al LLM (Gemini primero, OpenAI de respaldo) ============== */
     private Optional<String> llamarLlm(String systemPrompt, String userPrompt) {
+        return llamarLlm(systemPrompt, userPrompt, false);
+    }
+
+    private Optional<String> llamarLlm(String systemPrompt, String userPrompt, boolean ligeroPrimero) {
         if (hayGemini()) {
-            Optional<String> gemini = llamarGemini(systemPrompt, userPrompt, null, null, true);
+            Optional<String> gemini = llamarGemini(systemPrompt, userPrompt, null, null, true, ligeroPrimero);
             if (gemini.isPresent()) return gemini;
         }
         if (hayOpenAi()) return llamarOpenAi(systemPrompt, userPrompt);
@@ -201,23 +211,31 @@ public class AiService {
     }
 
     private Optional<String> llamarGemini(String systemPrompt, String userPrompt, String mimeType, String base64, boolean json) {
+        return llamarGemini(systemPrompt, userPrompt, mimeType, base64, json, false);
+    }
+
+    private Optional<String> llamarGemini(String systemPrompt, String userPrompt, String mimeType, String base64,
+                                          boolean json, boolean ligeroPrimero) {
         if (!hayGemini()) return Optional.empty();
-        List<String> modelos = modelosGemini();
-        for (String modelo : modelos) {
+        long ahora = System.currentTimeMillis();
+        for (String modelo : modelosGemini(ligeroPrimero)) {
+            if (modeloAgotadoHasta.getOrDefault(modelo, 0L) > ahora) continue;
             Optional<String> out = llamarGeminiModelo(modelo, systemPrompt, userPrompt, mimeType, base64, json);
             if (out.isPresent()) return out;
         }
         return Optional.empty();
     }
 
-    private List<String> modelosGemini() {
+    private List<String> modelosGemini(boolean ligeroPrimero) {
         List<String> modelos = new ArrayList<>();
+        if (ligeroPrimero) agregarModelo(modelos, geminiLightModel);
         agregarModelo(modelos, "gemini-3.6-flash");
         agregarModelo(modelos, geminiModel);
         if (geminiFallbackModels != null) {
             for (String m : geminiFallbackModels.split(",")) agregarModelo(modelos, m);
         }
         agregarModelo(modelos, "gemini-3.8-flash");
+        agregarModelo(modelos, geminiLightModel);
         return modelos;
     }
 
@@ -272,6 +290,10 @@ public class AiService {
             if (resp.statusCode() != 200) {
                 String snippet = resp.body() == null ? "" : resp.body().substring(0, Math.min(280, resp.body().length()));
                 log.warn("Gemini {} status={} body={}", modelo, resp.statusCode(), snippet);
+                if (resp.statusCode() == 429) {
+                    boolean diaria = resp.body() != null && resp.body().contains("PerDay");
+                    modeloAgotadoHasta.put(modelo, System.currentTimeMillis() + (diaria ? 30 * 60_000L : 60_000L));
+                }
                 return Optional.empty();
             }
             Optional<String> texto = extraerTextoGemini(resp.body()).map(this::limpiarJson);
@@ -534,7 +556,7 @@ public class AiService {
         String borradorPrompt = mascara.ocultar(previo == null ? "{}" : escribirBorrador(limpiarParaPrompt(previo)));
         String user = "Datos ya entendidos (borrador):\n" + borradorPrompt
                 + "\n\nConversación completa del administrador en este registro:\n" + mascara.ocultar(conversacion.toString());
-        Optional<String> llm = llamarLlm(system + MascaraDatos.INSTRUCCION, user).map(mascara::revelar);
+        Optional<String> llm = llamarLlm(system + MascaraDatos.INSTRUCCION, user, true).map(mascara::revelar);
         AiAdminOperationResponse dichos = adminOperacionLocal(String.join("\n", historial) + "\n" + instruccion, null);
         AiAdminOperationResponse r = llm.flatMap(this::leerRespuestaAdmin).orElse(null);
         boolean entendioGemini = r != null;
