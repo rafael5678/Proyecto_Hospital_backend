@@ -261,8 +261,8 @@ public class AiService {
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8))
                     .build();
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (resp.statusCode() == 429 || resp.statusCode() == 503) {
-                long espera = esperaSugeridaGemini(resp.body());
+            long espera = esperaSugeridaGemini(resp.statusCode(), resp.body());
+            if (espera > 0) {
                 log.info("Gemini {} status={}, reintento en {} ms", modelo, resp.statusCode(), espera);
                 Thread.sleep(espera);
                 resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -285,10 +285,13 @@ public class AiService {
         }
     }
 
-    private long esperaSugeridaGemini(String cuerpo) {
+    /** 0 = no reintentar. Con la cuota agotada (429) esperar no sirve: se pasa al siguiente modelo o al respaldo. */
+    private long esperaSugeridaGemini(int status, String cuerpo) {
+        if (status == 503) return 1500;
+        if (status != 429) return 0;
         Matcher m = Pattern.compile("\"retryDelay\"\\s*:\\s*\"(\\d+)(?:\\.\\d+)?s\"").matcher(cuerpo == null ? "" : cuerpo);
-        long segundos = m.find() ? Long.parseLong(m.group(1)) : 2;
-        return Math.min(Math.max(segundos, 1), 8) * 1000;
+        long segundos = m.find() ? Long.parseLong(m.group(1)) : 99;
+        return segundos <= 3 ? segundos * 1000 : 0;
     }
 
     private Optional<String> transcribirConGemini(byte[] audio, String contentType) {
