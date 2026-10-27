@@ -29,7 +29,11 @@ public class UserRequest {
     private String genero;
     private String tipoSangre;
     private String ciudad;
+    private String direccion;
     private String alergias;
+    private String contactoEmergencia;
+    private String telefonoEmergencia;
+    private String observaciones;
     private String diasAtencion;
     private String horaInicio;
     private String horaFin;

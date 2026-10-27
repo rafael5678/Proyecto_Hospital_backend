@@ -29,8 +29,12 @@ public class ProfileService {
                     .fechaNacimiento(parseFecha(req.getFechaNacimiento()))
                     .genero(req.getGenero())
                     .tipoSangre(req.getTipoSangre())
+                    .direccion(req.getDireccion())
                     .ciudad(req.getCiudad())
                     .alergias(req.getAlergias())
+                    .contactoEmergencia(req.getContactoEmergencia())
+                    .telefonoEmergencia(req.getTelefonoEmergencia())
+                    .observaciones(req.getObservaciones())
                     .build());
             case MEDICO -> medicoRepository.save(Doctor.builder()
                     .usuario(usuario)

@@ -469,7 +469,9 @@ public class AiService {
                 Ejemplos de cómo escribe el administrador, sin copiar estos nombres: "crea este paciente", "paciente: Ana López",
                 "el documento es 1087782595", "gmail ana@gmail.com", "la contraseña es Hospy2026", "12 años de experiencia",
                 "licencia MED-10", "teléfono 3001234567", "lunes a viernes de 8 a 12 y de 2 a 5".
-                No inventes correo, contraseña, documento, teléfono, licencia, años ni horario. Si no lo escribió, déjalo vacío.
+                No inventes correo, contraseña, documento, teléfono, licencia, años, horario ni datos clínicos. Si no lo dijo, déjalo vacío.
+                Un paciente también necesita fechaNacimiento en formato yyyy-MM-dd, genero, tipoSangre, direccion, ciudad, alergias, contactoEmergencia, telefonoEmergencia y observaciones.
+                Si dice ninguna, no tiene o no aplica, guarda "Ninguna".
                 Conserva el borrador. El mensaje nuevo solo agrega o corrige.
                 Si ya dijo que es paciente, accion=CREAR_PACIENTE. Si es médico, doctor o especialista, accion=CREAR_MEDICO.
                 Si pide cancelar, accion=INFO.
@@ -482,7 +484,8 @@ public class AiService {
                 Devuelve SOLO JSON:
                 {"accion":"CREAR_MEDICO|CREAR_PACIENTE|INFO","nombre":"","email":"","passwordSugerida":"",
                  "especialidad":"","anosExperiencia":null,"numeroLicencia":"","telefono":"","documento":"",
-                 "consultorio":"","biografia":"","ciudad":"","genero":"","alergias":"","fechaNacimiento":"",
+                 "consultorio":"","biografia":"","ciudad":"","direccion":"","genero":"","tipoSangre":"","alergias":"",
+                 "fechaNacimiento":"","contactoEmergencia":"","telefonoEmergencia":"","observaciones":"",
                  "diasAtencion":"","horaInicio":"","horaFin":"","horaInicio2":"","horaFin2":"","horario":"",
                  "mensaje":"qué dato acabas de entender"}
                 """;
@@ -518,6 +521,9 @@ public class AiService {
         if (!enBlanco(dichos.getHoraInicio2())) destino.setHoraInicio2(dichos.getHoraInicio2());
         if (!enBlanco(dichos.getHoraFin2())) destino.setHoraFin2(dichos.getHoraFin2());
         if (!enBlanco(dichos.getHorario())) destino.setHorario(dichos.getHorario());
+        if (!enBlanco(dichos.getFechaNacimiento())) destino.setFechaNacimiento(dichos.getFechaNacimiento());
+        if (!enBlanco(dichos.getTipoSangre())) destino.setTipoSangre(dichos.getTipoSangre());
+        if (!enBlanco(dichos.getGenero())) destino.setGenero(dichos.getGenero());
         if (dichos.getAnosExperiencia() != null) destino.setAnosExperiencia(dichos.getAnosExperiencia());
         if (!enBlanco(dichos.getAccion())) destino.setAccion(dichos.getAccion());
     }
@@ -582,6 +588,11 @@ public class AiService {
         if (enBlanco(nuevo.getGenero())) nuevo.setGenero(previo.getGenero());
         if (enBlanco(nuevo.getAlergias())) nuevo.setAlergias(previo.getAlergias());
         if (enBlanco(nuevo.getFechaNacimiento())) nuevo.setFechaNacimiento(previo.getFechaNacimiento());
+        if (enBlanco(nuevo.getDireccion())) nuevo.setDireccion(previo.getDireccion());
+        if (enBlanco(nuevo.getTipoSangre())) nuevo.setTipoSangre(previo.getTipoSangre());
+        if (enBlanco(nuevo.getContactoEmergencia())) nuevo.setContactoEmergencia(previo.getContactoEmergencia());
+        if (enBlanco(nuevo.getTelefonoEmergencia())) nuevo.setTelefonoEmergencia(previo.getTelefonoEmergencia());
+        if (enBlanco(nuevo.getObservaciones())) nuevo.setObservaciones(previo.getObservaciones());
         if (enBlanco(nuevo.getPasswordSugerida())) nuevo.setPasswordSugerida(previo.getPasswordSugerida());
         if (enBlanco(nuevo.getDiasAtencion())) nuevo.setDiasAtencion(previo.getDiasAtencion());
         if (enBlanco(nuevo.getHoraInicio())) nuevo.setHoraInicio(previo.getHoraInicio());
@@ -626,6 +637,24 @@ public class AiService {
         if (clave != null && !clave.equalsIgnoreCase("es")) r.setPasswordSugerida(clave);
         String esp = especialidadEnTexto(original);
         if (esp != null) r.setEspecialidad(esp);
+        String sangre = extraerGrupo(original, "(?i)(?:sangre|rh|grupo sangu[ií]neo)\\s*(?:es|:)?\\s*(AB|A|B|O)\\s*([+-]|positivo|negativo)");
+        if (sangre != null) {
+            Matcher ms = Pattern.compile("(?i)(AB|A|B|O)\\s*([+-]|positivo|negativo)").matcher(original);
+            if (ms.find()) {
+                String signo = ms.group(2).startsWith("n") || ms.group(2).equals("-") ? "-" : "+";
+                r.setTipoSangre(ms.group(1).toUpperCase() + signo);
+            }
+        }
+        Matcher fecha = Pattern.compile("(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})").matcher(original);
+        if (fecha.find()) {
+            r.setFechaNacimiento(String.format("%s-%02d-%02d", fecha.group(3),
+                    Integer.parseInt(fecha.group(2)), Integer.parseInt(fecha.group(1))));
+        } else {
+            String iso = extraerGrupo(original, "(\\d{4}-\\d{2}-\\d{2})");
+            if (iso != null) r.setFechaNacimiento(iso);
+        }
+        if (t.matches(".*\\b(masculino|hombre)\\b.*")) r.setGenero("Masculino");
+        else if (t.matches(".*\\b(femenino|mujer)\\b.*")) r.setGenero("Femenino");
         completarHorario(r, original);
         r.setModoDemo(true);
         return r;
@@ -747,6 +776,17 @@ public class AiService {
             r.setAccion("CREAR_PACIENTE");
             if (enBlanco(r.getDocumento())) faltan.add("el documento de identidad");
             if (enBlanco(r.getTelefono()) || r.getTelefono().length() < 7) faltan.add("el teléfono");
+            if (enBlanco(r.getFechaNacimiento()) || !r.getFechaNacimiento().matches("\\d{4}-\\d{2}-\\d{2}")) {
+                r.setFechaNacimiento(null);
+                faltan.add("la fecha de nacimiento");
+            }
+            if (enBlanco(r.getGenero())) faltan.add("el género");
+            if (enBlanco(r.getTipoSangre())) faltan.add("el tipo de sangre");
+            if (enBlanco(r.getDireccion())) faltan.add("la dirección");
+            if (enBlanco(r.getCiudad())) faltan.add("la ciudad");
+            if (enBlanco(r.getAlergias())) faltan.add("las alergias (o «ninguna»)");
+            if (enBlanco(r.getContactoEmergencia())) faltan.add("el contacto de emergencia");
+            if (enBlanco(r.getTelefonoEmergencia())) faltan.add("el teléfono de emergencia");
         }
         if (!faltan.isEmpty()) {
             r.setAccion("PREGUNTAR");
@@ -764,11 +804,12 @@ public class AiService {
             r.setMensaje("Registro al médico " + r.getNombre() + ", " + r.getEspecialidad()
                     + ", " + r.getAnosExperiencia() + " años de experiencia, licencia " + r.getNumeroLicencia()
                     + ", horario " + r.getHorario() + ", teléfono " + r.getTelefono()
-                    + ", correo " + r.getEmail() + ". La contraseña queda guardada y no se vuelve a mostrar.");
+                    + ", correo " + r.getEmail() + ".");
         } else {
             r.setMensaje("Registro al paciente " + r.getNombre() + ", documento " + r.getDocumento()
-                    + ", teléfono " + r.getTelefono() + ", correo " + r.getEmail()
-                    + ". La contraseña queda guardada y no se vuelve a mostrar.");
+                    + ", nacido el " + r.getFechaNacimiento() + ", " + r.getGenero() + ", sangre " + r.getTipoSangre()
+                    + ", " + r.getDireccion() + ", " + r.getCiudad() + ", teléfono " + r.getTelefono()
+                    + ", correo " + r.getEmail() + ".");
         }
         return r;
     }
