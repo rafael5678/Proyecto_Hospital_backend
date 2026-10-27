@@ -268,7 +268,9 @@ public class AiService {
             }
             Optional<String> texto = extraerTextoGemini(resp.body()).map(this::limpiarJson);
             if (texto.isEmpty()) {
-                log.warn("Gemini {} respondió 200 pero sin texto útil", modelo);
+                String motivo = mapper.readTree(resp.body()).path("candidates").path(0).path("finishReason").asText("");
+                String bloqueo = mapper.readTree(resp.body()).path("promptFeedback").path("blockReason").asText("");
+                log.warn("Gemini {} respondió 200 sin texto útil finishReason={} blockReason={}", modelo, motivo, bloqueo);
             }
             return texto;
         } catch (Exception ex) {
@@ -499,22 +501,24 @@ public class AiService {
                  "diasAtencion":"","horaInicio":"","horaFin":"","horaInicio2":"","horaFin2":"","horario":"",
                  "mensaje":"qué dato acabas de entender"}
                 """;
-        List<String> historial = previo == null || req.getHistorial() == null ? List.of() : req.getHistorial();
+        List<String> historial = (previo == null || req.getHistorial() == null ? List.<String>of() : req.getHistorial())
+                .stream().filter(m -> m != null && !m.isBlank()).map(this::normalizarDictado).toList();
+        instruccion = normalizarDictado(instruccion);
+        if (esCancelacion(instruccion)) {
+            AiAdminOperationResponse cancelado = adminOperacionLocal(instruccion, null);
+            cancelado.setModoDemo(false);
+            return cancelado;
+        }
         StringBuilder conversacion = new StringBuilder();
         int n = 1;
-        for (String anterior : historial) {
-            if (anterior != null && !anterior.isBlank()) conversacion.append(n++).append(". ").append(anterior.trim()).append('\n');
-        }
+        for (String anterior : historial) conversacion.append(n++).append(". ").append(anterior.trim()).append('\n');
         conversacion.append(n).append(". ").append(instruccion);
-        String user = "Datos ya entendidos (borrador):\n" + (previo == null ? "{}" : escribirBorrador(limpiarParaPrompt(previo)))
-                + "\n\nConversación completa del administrador en este registro:\n" + conversacion;
-        Optional<String> llm = llamarLlm(system, user);
+        MascaraDatos mascara = new MascaraDatos();
+        String borradorPrompt = mascara.ocultar(previo == null ? "{}" : escribirBorrador(limpiarParaPrompt(previo)));
+        String user = "Datos ya entendidos (borrador):\n" + borradorPrompt
+                + "\n\nConversación completa del administrador en este registro:\n" + mascara.ocultar(conversacion.toString());
+        Optional<String> llm = llamarLlm(system + MascaraDatos.INSTRUCCION, user).map(mascara::revelar);
         AiAdminOperationResponse dichos = adminOperacionLocal(String.join("\n", historial) + "\n" + instruccion, null);
-        if (esCancelacion(instruccion)) {
-            dichos = adminOperacionLocal(instruccion, null);
-            dichos.setModoDemo(llm.isEmpty());
-            return dichos;
-        }
         AiAdminOperationResponse r = llm.flatMap(this::leerRespuestaAdmin).orElse(null);
         boolean entendioGemini = r != null;
         if (r == null) r = previo == null ? new AiAdminOperationResponse() : previo;
@@ -526,6 +530,74 @@ public class AiService {
         normalizarAlta(r);
         r.setModoDemo(llm.isEmpty());
         return exigirDatosAlta(r);
+    }
+
+    /**
+     * Gemini corta la respuesta (finishReason SPII) cuando ve documentos, teléfonos y correos juntos.
+     * Se le envían marcadores y los valores reales se restauran en la respuesta.
+     */
+    private static final class MascaraDatos {
+        static final String INSTRUCCION = """
+
+                Los correos y los números largos (documento, teléfono, licencia) llegan como marcadores [[CORREO_1]] o [[NUM_1]].
+                Copia el marcador exacto en el campo que corresponda, por ejemplo "documento":"[[NUM_2]]". No los cambies ni los inventes.
+                """;
+        private static final Pattern CORREO = Pattern.compile("[\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+");
+        private static final Pattern NUMERO = Pattern.compile("(?<![\\w\\[])(?!\\d{4}-\\d{2}-\\d{2})\\d(?:[ .-]?\\d){4,}(?![\\w\\]])");
+        private final Map<String, String> valores = new LinkedHashMap<>();
+        private final Map<String, String> marcadores = new LinkedHashMap<>();
+
+        String ocultar(String texto) {
+            if (texto == null) return "";
+            String resultado = reemplazar(texto, CORREO, "CORREO", v -> v.toLowerCase());
+            return reemplazar(resultado, NUMERO, "NUM", v -> v.replaceAll("[^0-9]", ""));
+        }
+
+        private String reemplazar(String texto, Pattern patron, String tipo, java.util.function.UnaryOperator<String> normalizar) {
+            Matcher m = patron.matcher(texto);
+            StringBuilder sb = new StringBuilder();
+            while (m.find()) {
+                String valor = normalizar.apply(m.group());
+                String marcador = marcadores.get(tipo + ":" + valor);
+                if (marcador == null) {
+                    marcador = tipo + "_" + (valores.size() + 1);
+                    marcadores.put(tipo + ":" + valor, marcador);
+                    valores.put(marcador, valor);
+                }
+                m.appendReplacement(sb, Matcher.quoteReplacement("[[" + marcador + "]]"));
+            }
+            m.appendTail(sb);
+            return sb.toString();
+        }
+
+        String revelar(String texto) {
+            if (texto == null) return null;
+            String resultado = texto;
+            List<String> claves = new ArrayList<>(valores.keySet());
+            claves.sort((a, b) -> b.length() - a.length());
+            for (String marcador : claves) {
+                resultado = resultado.replaceAll("\\[*\\s*\\b" + marcador + "\\b\\s*\\]*", Matcher.quoteReplacement(valores.get(marcador)));
+            }
+            return resultado;
+        }
+    }
+
+    private String normalizarDictado(String texto) {
+        if (texto == null) return "";
+        String t = texto.replaceAll("(?i)\\s+arroba\\s+", "@");
+        for (int i = 0; i < 3; i++) {
+            t = t.replaceAll("(?i)(@[\\w.-]+?)\\s+punto\\s+(\\w+)", "$1.$2");
+            t = t.replaceAll("(?i)([\\w.]+)\\s+punto\\s+(?=[\\w.]*@)", "$1.");
+        }
+        t = t.replaceAll("(?i)\\b([\\w][\\w.+-]*?)\\.(gmail|hotmail|outlook|yahoo|icloud|live)\\.(com|es|co)\\b", "$1@$2.$3");
+        Matcher partes = Pattern.compile("(?i)((?:correo(?:\\s+electr[oó]nico)?|e-?mail|gmail)\\s*[,:]?\\s*(?:es\\s+)?)((?:[\\p{L}\\d._-]+\\s+){0,3}[\\p{L}\\d._-]+)\\s*@\\s*").matcher(t);
+        StringBuilder sb = new StringBuilder();
+        while (partes.find()) {
+            String usuario = sinAcentoAdmin(partes.group(2)).replaceAll("\\s+", "").toLowerCase();
+            partes.appendReplacement(sb, Matcher.quoteReplacement(partes.group(1) + usuario + "@"));
+        }
+        partes.appendTail(sb);
+        return sb.toString();
     }
 
     private boolean esCancelacion(String texto) {
@@ -783,15 +855,17 @@ public class AiService {
         if (anos != null) r.setAnosExperiencia(anos);
         String licencia = extraerGrupo(original, "(?i)licencia\\s*(?:es|numero|n[uú]mero|:)?\\s*[:#]?\\s*([A-Za-z]{0,8}[\\s-]?\\d[\\d-]{1,20}|[A-Za-z0-9-]{3,30}\\d)");
         if (licencia != null) r.setNumeroLicencia(licencia.trim().replaceAll("\\s+", "-").toUpperCase());
-        String documento = extraerGrupo(original, "(?i)(?:documento|c[eé]dula|cedula|dni)(?:\\s+de\\s+identidad)?\\s*(?:es|n[uú]mero|:)?\\s*[:#]?\\s*([A-Za-z0-9-]{5,20})");
-        if (documento != null) r.setDocumento(documento);
+        String documento = extraerGrupo(original, "(?i)(?:documento|c[eé]dula|cedula|dni)(?:\\s+de\\s+identidad)?\\s*[,:]?\\s*(?:es|n[uú]mero)?\\s*[:#]?\\s*((?:\\d[\\s.-]?){4,15}\\d|[A-Za-z0-9-]{5,20})");
+        if (documento != null) {
+            r.setDocumento(documento.matches("[\\d\\s.-]+") ? documento.replaceAll("[^0-9]", "") : documento);
+        }
         String telefono = extraerGrupo(original, "(?i)(?:tel[eé]fono|celular|cel|whatsapp)\\s*(?:es|:)?\\s*([0-9][0-9 \\-]{6,18})");
         if (telefono != null) r.setTelefono(telefono.replaceAll("[^0-9]", ""));
         String clave = extraerGrupo(original, "(?i)(?:clave|contrase[nñ]a|password)\\s*(?:es|:)?\\s*(\\S{6,40})");
         if (clave != null && !clave.equalsIgnoreCase("es")) r.setPasswordSugerida(clave);
         String esp = especialidadEnTexto(original);
         if (esp != null) r.setEspecialidad(esp);
-        Matcher ms = Pattern.compile("(?i)(?:sangre|rh|sangu[ií]neo)\\s*(?:es|:)?\\s*(AB|A|B|O)\\s*([+-]|positivo|negativo)").matcher(original);
+        Matcher ms = Pattern.compile("(?i)(?:sangre|rh|sangu[ií]neo)\\s*[,:]?\\s*(?:es\\s*)?[,:]?\\s*(AB|A|B|O)\\s*([+-]|positivo|negativo)").matcher(original);
         while (ms.find()) {
             String signo = ms.group(2).toLowerCase().startsWith("n") || ms.group(2).equals("-") ? "-" : "+";
             r.setTipoSangre(ms.group(1).toUpperCase() + signo);
@@ -803,7 +877,7 @@ public class AiService {
         String fechaHablada = fechaDesdeTexto(original);
         if (fechaHablada != null) r.setFechaNacimiento(fechaHablada);
         String fin = "(?=[.,;\\n]|\\s+y\\s+(?:el|la|mi|las|los)\\b|$)";
-        String ciudad = extraerGrupo(original, "(?i)ciudad\\s*(?:es|:)?\\s*([\\p{L}][\\p{L} .'-]{1,40}?)" + fin);
+        String ciudad = extraerGrupo(original, "(?i)ciudad\\s*[,:]?\\s*(?:es\\s+)?(?:(?:la\\s+)?ciudad\\s+de\\s+|de\\s+)?([\\p{L}][\\p{L} '-]{1,40}?)" + fin);
         if (ciudad != null) r.setCiudad(ciudad);
         String direccion = extraerGrupo(original, "(?i)direcci[oó]n\\s*(?:es|:)?\\s*(?:ah\\s+|eh\\s+)?([\\p{L}0-9#][^.;\\n]{2,80}?)"
                 + "(?=,\\s*(?:mi|su|la|el|y|ciudad|tel[eé]fono|g[eé]nero|alergias?)\\b|\\s+y\\s+(?:mi|su|la|el)\\b|[.;\\n]|$)");
@@ -811,7 +885,7 @@ public class AiService {
         if (t.matches("(?s).*\\b(no tengo (ninguna|alergias)|ninguna alergia|sin alergias|alergias?[,:]?\\s*(no|ninguna))\\b.*")) {
             r.setAlergias("Ninguna");
         }
-        String contacto = extraerGrupo(original, "(?i)contacto de emergencia\\s*(?:es|:)?\\s*(?:ah\\s+|eh\\s+)?([\\p{L}][\\p{L} .'-]{1,50}?)" + fin);
+        String contacto = extraerGrupo(original, "(?i)contacto de emergencia\\s*[,:]?\\s*(?:es\\s+)?(?:ah\\s+|eh\\s+)?([\\p{L}][\\p{L} '-]{1,50}?)" + fin);
         if (contacto != null) r.setContactoEmergencia(contacto);
         String telEmergencia = extraerGrupo(original, "(?i)(?:tel[eé]fono de emergencia|contacto de emergencia)\\s*(?:es|:)?\\s*(?:ah\\s+|eh\\s+)?([0-9][0-9 \\-]{6,18})");
         if (telEmergencia != null) r.setTelefonoEmergencia(telEmergencia.replaceAll("[^0-9]", ""));
@@ -824,7 +898,7 @@ public class AiService {
         String letras = "([\\p{L}][\\p{L} '-]{2,80})";
         String nombre = extraerGrupo(original, "(?i)(?:paciente|m[eé]dico|doctor|doctora)\\s*[:\\-]\\s*" + letras);
         if (nombre == null) {
-            nombre = extraerGrupo(original, "(?i)(?:mi nombre es|su nombre es|el nombre es|nombre completo es|con el nombre(?: de)?|se llama|llamad[oa]|nombre\\s*:)\\s*" + letras);
+            nombre = extraerGrupo(original, "(?i)(?:mi nombre es|su nombre es|el nombre es|nombre completo es|con el nombre(?: de)?|se llama|llamad[oa]|nombre\\s*:|(?:^|[.,;\\n]\\s*)nombre(?:\\s+completo)?)\\s*" + letras);
         }
         if (nombre == null) return null;
         nombre = nombre.split("(?i)\\s+(con|y|es|mi|su|el|la|correo|email|gmail|documento|tel[eé]fono|celular|licencia|especialidad|clave|contrase\\p{L}*|que|tiene|atiende)\\b")[0].trim();
