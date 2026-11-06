@@ -58,6 +58,12 @@ public class DoctorPortalController {
         return ResponseEntity.ok(citaService.historialPacienteDeCita(id, emailActual()));
     }
 
+    @PostMapping("/appointments/{id}/indicacion")
+    public ResponseEntity<ApiMessage> enviarIndicacion(@PathVariable Long id, @RequestBody IndicacionRequest req) {
+        citaService.enviarIndicacion(id, emailActual(), req);
+        return ResponseEntity.ok(new ApiMessage("El paciente ya tiene el aviso en la campana."));
+    }
+
     @GetMapping("/schedules")
     public ResponseEntity<List<ScheduleResponse>> misHorarios() {
         return ResponseEntity.ok(horarioService.misHorarios(emailActual()));

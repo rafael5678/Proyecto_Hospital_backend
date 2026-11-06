@@ -1325,12 +1325,18 @@ public class AiService {
     /* ============ 3. Escriba SOAP médico ============== */
     public AiSoapResponse soap(AiSoapRequest req) {
         final String system = """
-                Estructura el texto proporcionado como un borrador SOAP para revisión médica.
-                No eres un sistema NER clínico validado. No inventes hallazgos, signos vitales, diagnósticos ni planes.
-                Para datos ausentes, escribe "No informado". El profesional debe revisar y firmar el borrador.
-                Devuelve JSON con esta estructura:
-                {"subjetivo":"...(S)","objetivo":"...(O signos/constantes)","apreciacion":"...(A impresión diagnóstica)",
-                 "plan":"...(P: conducta, estudios, manejo)","diagnosticoPresuntivo":"...","procedimientosSugeridos":"..."}
+                Apoyas al médico en la consulta. No copies el aviso de triaje que ya vio el paciente.
+                No uses semáforos, colores de severidad ni niveles ESI. No inventes signos vitales, dosis ni diagnósticos cerrados.
+                Si un dato no está en el texto, escribe "No informado". El médico decide.
+                Los medicamentos son opciones para que él elija, no una orden.
+                Responde solo JSON. Las listas van como texto, un ítem por línea, nunca como arreglo:
+                {"resumenParaMedico":"qué le pasa, en 3 o 4 frases para el médico",
+                 "enfoqueEnConsulta":"qué examinar y qué decidir en esta cita",
+                 "preguntasSugeridas":"pregunta 1\\npregunta 2\\npregunta 3",
+                 "medicamentosSugeridos":"nombre · presentación habitual · para qué\\notro",
+                 "cuidados":"ejercicio, reposo o señales para volver",
+                 "subjetivo":"...","objetivo":"...","apreciacion":"...","plan":"...",
+                 "diagnosticoPresuntivo":"...","procedimientosSugeridos":"..."}
                 """;
         String user = "Nombre paciente: " + nvl(req.getNombrePaciente()) +
                 " | Motivo inicial: " + nvl(req.getMotivoInicial()) +
@@ -1339,24 +1345,54 @@ public class AiService {
         Optional<String> llm = llamarLlm(system, user);
         if (llm.isEmpty()) return soapMock(req);
         try {
-            AiSoapResponse r = mapper.readValue(llm.get(), AiSoapResponse.class);
-            r.setModoDemo(false);
-            return r;
+            return leerSoap(llm.get());
         } catch (Exception ex) {
             return soapMock(req);
         }
     }
 
+    public AiConsultaSimResponse consultaSimulada(AiConsultaSimRequest req) {
+        final String system = """
+                Simulas al paciente en una consulta de práctica. Hablas en primera persona, en español de Colombia, corto.
+                Solo usas el motivo y el contexto. Si el médico pregunta algo que no está ahí, di que no lo has contado.
+                No des un diagnóstico. No inventes alergias, cirugías ni medicamentos que no aparezcan.
+                Responde solo JSON, sin arreglos:
+                {"dicePaciente":"...","pistaParaElMedico":"qué puede revisar con esa respuesta",
+                 "medicamentosSugeridos":"opción · presentación · para qué\\notra",
+                 "cuidados":"qué puede recomendar en casa"}
+                """;
+        String dialogo = req.getDialogo() == null ? "" : String.join("\n", req.getDialogo());
+        String user = "Paciente: " + nvl(req.getNombrePaciente()) +
+                "\nMotivo: " + nvl(req.getMotivo()) +
+                "\nContexto:\n" + nvl(req.getContexto()) +
+                "\nDiálogo previo:\n" + (dialogo.isBlank() ? "aún no empieza" : dialogo) +
+                "\nPregunta del médico: " + (req.getPregunta() == null || req.getPregunta().isBlank()
+                ? "saluda y cuenta con tus palabras lo que te trajo" : req.getPregunta());
+        Optional<String> llm = llamarLlm(system, user);
+        if (llm.isEmpty()) return consultaMock(req);
+        try {
+            return leerConsulta(llm.get());
+        } catch (Exception ex) {
+            return consultaMock(req);
+        }
+    }
+
     private AiSoapResponse soapMock(AiSoapRequest req) {
         String t = req.getTranscripcionConsulta();
+        String recorte = t == null ? "" : (t.length() > 280 ? t.substring(0, 280) + "..." : t);
         return AiSoapResponse.builder()
-                .subjetivo("Patient refiere: " + (t.length() > 300 ? t.substring(0, 300) + "..." : t))
-                .objetivo("Signos vitales pendientes de registrar (modo demo). Piel: cálida y húmeda, mucosas rosadas.")
-                .apreciacion("Cuadro probable de origen inespecífico (modo demo), correlacionar con examen físico completo.")
-                .plan(MODO_DEMO_SIN_API_KEY +
-                        " 1) Toma de constantes completas. 2) Paraclínicos según impresión. 3) Reevaluación en 48h. 4) Firma médica.")
-                .diagnosticoPresuntivo("Diagnóstico diferencial pendiente de confirmación")
-                .procedimientosSugeridos("-")
+                .resumenParaMedico("El paciente consulta por: " + nvl(req.getMotivoInicial())
+                        + ". En el relato cuenta: " + (recorte.isBlank() ? "sin más detalle." : recorte))
+                .enfoqueEnConsulta("Confirma desde cuándo empezó, qué lo alivia y qué lo empeora. Examina la zona que refiere antes de decidir un medicamento.")
+                .preguntasSugeridas("¿Desde cuándo le pasa y cómo empezó?\n¿Ha tomado algo y le sirvió?\n¿Hay fiebre, falta de aire o un dolor que se irradia?")
+                .medicamentosSugeridos("Analgésico habitual · caja de tabletas · solo si no hay alergia y el examen lo permite\nMedida no farmacológica · reposo relativo y movimiento suave · mientras se aclara la causa")
+                .cuidados("Movimiento suave de la zona si el dolor lo permite, calor local y volver si aparece fiebre, falta de aire o el dolor se vuelve intenso.")
+                .subjetivo("Refiere: " + (recorte.isBlank() ? "no informado" : recorte))
+                .objetivo("Signos vitales: no informados. Completar en el examen.")
+                .apreciacion("Impresión pendiente del examen. No cierres el diagnóstico con este borrador.")
+                .plan("1) Preguntar lo que falta. 2) Examinar. 3) Elegir medicamento solo si corresponde. 4) Dejar cuidados por escrito.")
+                .diagnosticoPresuntivo("Pendiente de tu examen")
+                .procedimientosSugeridos("No informado")
                 .modoDemo(true).build();
     }
 
@@ -1451,22 +1487,30 @@ public class AiService {
     /* ============ 5. Triangulación precios medicamentos (Isolation Forest + Prophet) ============== */
     public AiPricesResponse precios(AiPricesRequest req) {
         final String system = """
-                Eres un modelo IsolationForest + Prophet de triangulación de precios farmacéuticos.
-                Responde JSON: {"precioEsperadoMin":12.5,"precioEsperadoMax":38.4,"precioPromedio":25.0,
+                Estimas precios aproximados de medicamentos en Colombia, en pesos colombianos. No consultas inventario real.
+                Si no te dan la presentación, usa la caja más habitual de ese medicamento.
+                Los puntos de venta tienen que quedar en la ciudad pedida: centros comerciales, avenidas o el centro de ESA ciudad.
+                En Pasto, por ejemplo, Unicentro, Valle de Atriz, el centro y la avenida Panamericana.
+                El precio es un rango, no el valor exacto de hoy. Responde solo JSON:
+                {"presentacionEstimada":"caja x 30 tabletas","precioEsperadoMin":18000,"precioEsperadoMax":42000,"precioPromedio":28000,
                  "evaluacionSobreprecio":"DENTRO_RANGO|SOBREPRECIO_BAJO|SOBREPRECIO_ALTO|DESABASTECIMIENTO_ARTIFICIAL",
-                 "porcentajeDesviacion":12.0,
-                 "comparativa":[{"nombre":"Farmacia Cruz Verde","precio":25.9,"disponibilidad":"En stock","url":"https://..."}],
-                 "alertas":["a1"],"recomendacion":"..."}
+                 "porcentajeDesviacion":0,
+                 "comparativa":[{"nombre":"Cruz Verde","lugar":"Unicentro","presentacion":"caja x 30","precio":27000,
+                   "disponibilidad":"Precio aproximado, sin confirmar stock","url":""}],
+                 "alertas":["Es un rango, no el precio de caja de hoy"],
+                 "recomendacion":"dónde suele salir más barato y qué presentación comparar"}
                 """;
         String user = "Medicamento: " + req.getMedicamento() +
                 " | Presentación: " + nvl(req.getPresentacion()) +
-                " | Precio reportado por usuario: " + (req.getPrecioReportado() == null ? "no informado" : req.getPrecioReportado()) +
-                " | Ciudad: " + nvl(req.getCiudad());
+                " | Precio que le cobraron, si lo dijo: " + (req.getPrecioReportado() == null ? "no informado" : req.getPrecioReportado()) +
+                " | Ciudad de Colombia: " + nvl(req.getCiudad()) +
+                " | Devuelve 4 lugares distintos de esa ciudad, con el más barato primero.";
 
         Optional<String> llm = llamarLlm(system, user);
         if (llm.isEmpty()) return preciosMock(req);
         try {
             AiPricesResponse r = mapper.readValue(llm.get(), AiPricesResponse.class);
+            completarLugares(r, req);
             r.setModoDemo(false);
             return r;
         } catch (Exception ex) {
@@ -1488,16 +1532,20 @@ public class AiService {
         double max = base * 1.35;
         double pmed = base * 1.02;
 
-        List<AiPricesResponse.ComparativaFarmacia> comp = List.of(
-                AiPricesResponse.ComparativaFarmacia.builder()
-                        .nombre("Cruz Verde").precio(base * 1.05).disponibilidad("En stock").url("https://www.cruzverde.com.co").build(),
-                AiPricesResponse.ComparativaFarmacia.builder()
-                        .nombre("Farmatodo").precio(base * 0.98).disponibilidad("En stock").url("https://www.farmatodo.com.co").build(),
-                AiPricesResponse.ComparativaFarmacia.builder()
-                        .nombre("Droguería Cafam").precio(base * 0.86).disponibilidad("3 disponibles").url("https://www.drogueriascafam.com.co").build(),
-                AiPricesResponse.ComparativaFarmacia.builder()
-                        .nombre("Locatel").precio(base * 1.18).disponibilidad("En stock").url("https://www.locatelcolombia.com").build()
-        );
+        String presentacion = presentacionDe(req);
+        List<String[]> puntos = puntosDeVenta(req.getCiudad());
+        double[] factores = {0.86, 0.97, 1.08, 1.2};
+        List<AiPricesResponse.ComparativaFarmacia> comp = new ArrayList<>();
+        for (int i = 0; i < puntos.size() && i < factores.length; i++) {
+            comp.add(AiPricesResponse.ComparativaFarmacia.builder()
+                    .nombre(puntos.get(i)[0])
+                    .lugar(puntos.get(i)[1])
+                    .presentacion(presentacion)
+                    .precio((double) Math.round(base * factores[i]))
+                    .disponibilidad("Precio aproximado, sin confirmar stock")
+                    .url("")
+                    .build());
+        }
 
         List<String> alertas = new ArrayList<>();
         String eval = "DENTRO_RANGO";
@@ -1508,18 +1556,158 @@ public class AiService {
             else if (desv > 15) { eval = "SOBREPRECIO_BAJO"; alertas.add("ℹ️ Precio por encima del percentil 75"); }
             if (desv < -35) { eval = "DESABASTECIMIENTO_ARTIFICIAL"; alertas.add("🚨 Precio sospechosamente bajo: posible oferta sin stock (hoarding especulativo)"); }
         }
-        alertas.add("Modo demo: compara tu precio reportado vs 4 cadenas nacionales.");
+        String ciudad = nvl(req.getCiudad());
+        alertas.add("Rango aproximado en " + ciudad + ". No es el precio de caja de hoy ni confirma que haya existencias.");
 
         return AiPricesResponse.builder()
-                .precioEsperadoMin(Math.round(min * 100.0) / 100.0)
-                .precioEsperadoMax(Math.round(max * 100.0) / 100.0)
-                .precioPromedio(Math.round(pmed * 100.0) / 100.0)
+                .presentacionEstimada(presentacion)
+                .precioEsperadoMin((double) Math.round(min))
+                .precioEsperadoMax((double) Math.round(max))
+                .precioPromedio((double) Math.round(pmed))
                 .evaluacionSobreprecio(eval)
                 .porcentajeDesviacion(Math.round(desv * 100.0) / 100.0)
                 .comparativa(comp).alertas(alertas)
-                .recomendacion(MODO_DEMO_SIN_API_KEY +
-                        " Compara en al menos 3 cadenas, verifica principio activo genérico igual y lote de invima. Reporta sobreprecios a SuperSalud/INVIMA.")
+                .recomendacion("En " + ciudad + " la opción más baja de esta lista es una referencia, no una oferta. Compara la misma presentación y el mismo principio activo.")
                 .modoDemo(true).build();
+    }
+
+    private AiSoapResponse leerSoap(String json) throws Exception {
+        JsonNode n = mapper.readTree(limpiarJson(json));
+        AiSoapResponse r = new AiSoapResponse();
+        r.setResumenParaMedico(textoNodo(n, "resumenParaMedico"));
+        r.setEnfoqueEnConsulta(textoNodo(n, "enfoqueEnConsulta"));
+        r.setPreguntasSugeridas(textoNodo(n, "preguntasSugeridas"));
+        r.setMedicamentosSugeridos(textoNodo(n, "medicamentosSugeridos"));
+        r.setCuidados(textoNodo(n, "cuidados"));
+        r.setSubjetivo(textoNodo(n, "subjetivo"));
+        r.setObjetivo(textoNodo(n, "objetivo"));
+        r.setApreciacion(textoNodo(n, "apreciacion"));
+        r.setPlan(textoNodo(n, "plan"));
+        r.setDiagnosticoPresuntivo(textoNodo(n, "diagnosticoPresuntivo"));
+        r.setProcedimientosSugeridos(textoNodo(n, "procedimientosSugeridos"));
+        r.setModoDemo(false);
+        return r;
+    }
+
+    private AiConsultaSimResponse leerConsulta(String json) throws Exception {
+        JsonNode n = mapper.readTree(limpiarJson(json));
+        return AiConsultaSimResponse.builder()
+                .dicePaciente(textoNodo(n, "dicePaciente"))
+                .pistaParaElMedico(textoNodo(n, "pistaParaElMedico"))
+                .medicamentosSugeridos(textoNodo(n, "medicamentosSugeridos"))
+                .cuidados(textoNodo(n, "cuidados"))
+                .modoDemo(false)
+                .build();
+    }
+
+    private AiConsultaSimResponse consultaMock(AiConsultaSimRequest req) {
+        String base = nvl(req.getMotivo());
+        String contexto = nvl(req.getContexto());
+        boolean saludo = req.getPregunta() == null || req.getPregunta().isBlank();
+        String dice = saludo
+                ? "Doctor, vengo porque " + (base.equals("no informado") ? "me siento mal y quiero que me revise." : base + ".")
+                : "De lo que ya conté, eso es lo que sé. No tengo otro dato sobre esa pregunta.";
+        if (!saludo && !contexto.equals("no informado") && contexto.toLowerCase().contains(req.getPregunta().toLowerCase().substring(0, Math.min(12, req.getPregunta().length())))) {
+            dice = "Sí, eso está en lo que le conté: " + (contexto.length() > 180 ? contexto.substring(0, 180) + "..." : contexto);
+        }
+        return AiConsultaSimResponse.builder()
+                .dicePaciente(dice)
+                .pistaParaElMedico("Simulación con el relato que ya existe. Examina antes de formular.")
+                .medicamentosSugeridos("Analgésico habitual · tabletas · solo si el examen lo permite")
+                .cuidados("Reposo relativo, movimiento suave y volver si empeora.")
+                .modoDemo(true)
+                .build();
+    }
+
+    private void completarLugares(AiPricesResponse r, AiPricesRequest req) {
+        if (r.getPresentacionEstimada() == null || r.getPresentacionEstimada().isBlank()) {
+            r.setPresentacionEstimada(presentacionDe(req));
+        }
+        if (r.getComparativa() == null) return;
+        List<String[]> puntos = puntosDeVenta(req.getCiudad());
+        for (int i = 0; i < r.getComparativa().size(); i++) {
+            AiPricesResponse.ComparativaFarmacia f = r.getComparativa().get(i);
+            String[] p = puntos.get(i % puntos.size());
+            if (f.getNombre() == null || f.getNombre().isBlank()) f.setNombre(p[0]);
+            if (f.getLugar() == null || f.getLugar().isBlank()) f.setLugar(p[1]);
+            if (f.getPresentacion() == null || f.getPresentacion().isBlank()) f.setPresentacion(r.getPresentacionEstimada());
+            if (f.getDisponibilidad() == null || f.getDisponibilidad().isBlank()) {
+                f.setDisponibilidad("Precio aproximado, sin confirmar stock");
+            }
+        }
+    }
+
+    private String presentacionDe(AiPricesRequest req) {
+        if (req.getPresentacion() != null && !req.getPresentacion().isBlank()) return req.getPresentacion().trim();
+        String med = req.getMedicamento() == null ? "" : req.getMedicamento().toLowerCase();
+        if (med.contains("jarabe") || med.contains("suspens")) return "frasco de jarabe";
+        if (med.contains("crema") || med.contains("gel") || med.contains("ungüento") || med.contains("unguento")) return "tubo";
+        if (med.contains("ampolla") || med.contains("inyect")) return "ampolla";
+        return "caja de tabletas, presentación habitual";
+    }
+
+    private List<String[]> puntosDeVenta(String ciudad) {
+        String c = sinAcentoAdmin(nvl(ciudad)).toLowerCase();
+        if (c.contains("pasto")) return List.of(
+                par("La Rebaja", "Valle de Atriz"),
+                par("Cruz Verde", "Unicentro"),
+                par("Droguería del centro", "Centro, calle 18"),
+                par("Copservir", "Avenida Panamericana"));
+        if (c.contains("bogota")) return List.of(
+                par("Droguerías Colsubsidio", "Chapinero"),
+                par("Cruz Verde", "Unicentro"),
+                par("Farmatodo", "Salitre Plaza"),
+                par("Locatel", "Centro Internacional"));
+        if (c.contains("medellin")) return List.of(
+                par("La Rebaja", "Laureles"),
+                par("Cruz Verde", "El Tesoro"),
+                par("Farmatodo", "Santa Fe"),
+                par("Droguería de barrio", "Centro"));
+        if (c.contains("cali")) return List.of(
+                par("Cruz Verde", "Unicentro"),
+                par("La Rebaja", "Chipichape"),
+                par("Farmatodo", "Granada"),
+                par("Droguería del centro", "Centro"));
+        if (c.contains("barranquilla")) return List.of(
+                par("Cruz Verde", "Portal del Prado"),
+                par("La Rebaja", "Alto Prado"),
+                par("Olímpica", "Centro"),
+                par("Droguería de barrio", "Norte"));
+        if (c.contains("bucaramanga")) return List.of(
+                par("Cruz Verde", "Cacique"),
+                par("La Rebaja", "Cabecera"),
+                par("Droguería del centro", "Centro"),
+                par("Copservir", "Cañaveral"));
+        if (c.contains("cartagena")) return List.of(
+                par("Cruz Verde", "Bocagrande"),
+                par("La Rebaja", "Ejecutivos"),
+                par("Droguería del centro", "Centro histórico"),
+                par("Olímpica", "Bocagrande"));
+        String sitio = c.contains("no informado") ? "la ciudad" : ciudad.trim();
+        return List.of(
+                par("La Rebaja", "Centro de " + sitio),
+                par("Cruz Verde", "Centro comercial de " + sitio),
+                par("Droguería de barrio", "Barrio céntrico de " + sitio),
+                par("Olímpica", "Zona comercial de " + sitio));
+    }
+
+    private static String[] par(String nombre, String lugar) {
+        return new String[] { nombre, lugar };
+    }
+
+    private String textoNodo(JsonNode n, String campo) {
+        if (n == null) return "";
+        JsonNode v = n.get(campo);
+        if (v == null || v.isNull()) return "";
+        if (v.isArray()) {
+            StringBuilder sb = new StringBuilder();
+            v.forEach(item -> {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(item.isValueNode() ? item.asText() : item.toString());
+            });
+            return sb.toString().trim();
+        }
+        return v.asText("").trim();
     }
 
     private static String nvl(String s) { return s == null || s.isBlank() ? "no informado" : s; }

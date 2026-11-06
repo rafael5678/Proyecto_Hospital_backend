@@ -2,6 +2,7 @@ package com.hospy.service;
 
 import com.hospy.dto.AppointmentRequest;
 import com.hospy.dto.AppointmentResponse;
+import com.hospy.dto.IndicacionRequest;
 import com.hospy.dto.SlotResponse;
 import com.hospy.dto.PatientProfileDto;
 import com.hospy.dto.RescheduleAppointmentRequest;
@@ -34,6 +35,7 @@ public class AppointmentService {
     private final PatientService pacienteService;
     private final AppointmentChangeRepository cambioCitaRepository;
     private final AppointmentNotificationService notificacionCitaService;
+    private final NotificationInboxService notificacionInboxService;
     private final ScheduleRepository horarioRepository;
     private final ScheduleService horarioService;
 
@@ -321,6 +323,30 @@ public class AppointmentService {
         Appointment cita = buscar(citaId);
         validarMedico(cita, emailMedico);
         return pacienteService.toPerfilDto(cita.getPaciente());
+    }
+
+    @Transactional
+    public void enviarIndicacion(Long citaId, String emailMedico, IndicacionRequest req) {
+        Appointment cita = buscar(citaId);
+        validarMedico(cita, emailMedico);
+        String medicamentos = req == null || req.getMedicamentos() == null ? "" : req.getMedicamentos().trim();
+        String cuidados = req == null || req.getCuidados() == null ? "" : req.getCuidados().trim();
+        String resumen = req == null || req.getResumen() == null ? "" : req.getResumen().trim();
+        if (medicamentos.isBlank() && cuidados.isBlank()) {
+            throw new RuntimeException("Elige un medicamento o escribe qué debe hacer el paciente.");
+        }
+        String medico = cita.getMedico().getUsuario().getNombre();
+        StringBuilder mensaje = new StringBuilder();
+        mensaje.append(medico).append(" te dejó estas indicaciones de la consulta.");
+        if (!resumen.isBlank()) mensaje.append("\n\nQué vimos: ").append(resumen);
+        if (!medicamentos.isBlank()) mensaje.append("\n\nMedicamentos: ").append(medicamentos);
+        if (!cuidados.isBlank()) mensaje.append("\n\nQué hacer: ").append(cuidados);
+        notificacionInboxService.crear(
+                cita.getPaciente().getUsuario(),
+                "Indicaciones de tu consulta",
+                mensaje.toString(),
+                "INDICACION",
+                cita.getId());
     }
 
     public List<AppointmentResponse> historialPacienteDeCita(Long citaId, String emailMedico) {

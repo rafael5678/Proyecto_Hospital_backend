@@ -49,6 +49,12 @@ public class AiController {
         return ResponseEntity.ok(aiService.soap(req));
     }
 
+    @PostMapping("/consulta")
+    @PreAuthorize("hasAnyRole('MEDICO','ADMIN')")
+    public ResponseEntity<AiConsultaSimResponse> consulta(@RequestBody AiConsultaSimRequest req) {
+        return ResponseEntity.ok(aiService.consultaSimulada(req));
+    }
+
     @PostMapping(value = "/transcribe", consumes = "multipart/form-data")
     @PreAuthorize("hasAnyRole('MEDICO','ADMIN')")
     public ResponseEntity<AiTranscriptionResponse> transcribir(@RequestParam("audio") MultipartFile audio) throws IOException {

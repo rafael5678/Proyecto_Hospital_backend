@@ -26,6 +26,9 @@ public class AiPricesResponse {
 
     private String recomendacion;
 
+    /** Caja o presentación más habitual cuando el médico no la escribió. */
+    private String presentacionEstimada;
+
     private Boolean modoDemo;
 
     @Data
@@ -37,5 +40,8 @@ public class AiPricesResponse {
         private Double precio;
         private String disponibilidad;
         private String url;
+        /** Sitio de la ciudad: centro comercial, barrio o avenida. */
+        private String lugar;
+        private String presentacion;
     }
 }
