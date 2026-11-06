@@ -60,8 +60,11 @@ public class DoctorPortalController {
 
     @PostMapping("/appointments/{id}/indicacion")
     public ResponseEntity<ApiMessage> enviarIndicacion(@PathVariable Long id, @RequestBody IndicacionRequest req) {
-        citaService.enviarIndicacion(id, emailActual(), req);
-        return ResponseEntity.ok(new ApiMessage("El paciente ya tiene el aviso en la campana."));
+        boolean correo = citaService.enviarIndicacion(id, emailActual(), req);
+        String aviso = correo
+                ? "Listo. Le llegó a la campana y también al correo."
+                : "Listo. Le llegó a la campana. El correo no salió en este momento.";
+        return ResponseEntity.ok(new ApiMessage(aviso));
     }
 
     @GetMapping("/schedules")

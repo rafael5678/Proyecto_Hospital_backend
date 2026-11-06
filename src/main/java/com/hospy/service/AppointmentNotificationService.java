@@ -93,6 +93,15 @@ public class AppointmentNotificationService {
         return enviar(cita.getPaciente().getUsuario().getEmail(), asunto, texto);
     }
 
+    public boolean notificarIndicacion(Appointment cita, String texto) {
+        String email = cita.getPaciente().getUsuario().getEmail();
+        String nombre = cita.getPaciente().getUsuario().getNombre();
+        inbox.crearParaEmail(email, "Indicaciones de tu consulta", texto, "INDICACION", cita.getId());
+        String correo = "Hola " + nombre + ",\n\n" + texto
+                + "\n\nEsto es lo que te dejó tu médico en Hospy. Si algo empeora, vuelve a consultar.\n\n— Equipo Hospy";
+        return enviar(email, "Indicaciones de tu consulta", correo);
+    }
+
     public boolean notificarCitaCancelada(Appointment cita) {
         String asuntoMedico = "El paciente canceló una cita";
         String textoMedico = "Hola " + cita.getMedico().getUsuario().getNombre() + ",\n\n" +

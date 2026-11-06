@@ -35,7 +35,6 @@ public class AppointmentService {
     private final PatientService pacienteService;
     private final AppointmentChangeRepository cambioCitaRepository;
     private final AppointmentNotificationService notificacionCitaService;
-    private final NotificationInboxService notificacionInboxService;
     private final ScheduleRepository horarioRepository;
     private final ScheduleService horarioService;
 
@@ -326,7 +325,7 @@ public class AppointmentService {
     }
 
     @Transactional
-    public void enviarIndicacion(Long citaId, String emailMedico, IndicacionRequest req) {
+    public boolean enviarIndicacion(Long citaId, String emailMedico, IndicacionRequest req) {
         Appointment cita = buscar(citaId);
         validarMedico(cita, emailMedico);
         String medicamentos = req == null || req.getMedicamentos() == null ? "" : req.getMedicamentos().trim();
@@ -341,12 +340,7 @@ public class AppointmentService {
         if (!resumen.isBlank()) mensaje.append("\n\nQué vimos: ").append(resumen);
         if (!medicamentos.isBlank()) mensaje.append("\n\nMedicamentos: ").append(medicamentos);
         if (!cuidados.isBlank()) mensaje.append("\n\nQué hacer: ").append(cuidados);
-        notificacionInboxService.crear(
-                cita.getPaciente().getUsuario(),
-                "Indicaciones de tu consulta",
-                mensaje.toString(),
-                "INDICACION",
-                cita.getId());
+        return notificacionCitaService.notificarIndicacion(cita, mensaje.toString());
     }
 
     public List<AppointmentResponse> historialPacienteDeCita(Long citaId, String emailMedico) {
