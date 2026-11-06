@@ -1,6 +1,8 @@
 package com.hospy.service;
 
 import com.hospy.model.Appointment;
+import com.hospy.model.Role;
+import com.hospy.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,11 +27,14 @@ public class AppointmentNotificationService {
     private String from;
 
     private final NotificationInboxService inbox;
+    private final UserRepository usuarioRepository;
 
     public AppointmentNotificationService(ObjectProvider<JavaMailSender> senderProvider,
-                                   NotificationInboxService inbox) {
+                                   NotificationInboxService inbox,
+                                   UserRepository usuarioRepository) {
         this.senderProvider = senderProvider;
         this.inbox = inbox;
+        this.usuarioRepository = usuarioRepository;
     }
 
     public ResultadoNotificacion notificarCambio(Appointment cita, LocalDateTime fechaAnterior, String motivo) {
@@ -96,10 +101,17 @@ public class AppointmentNotificationService {
     public boolean notificarIndicacion(Appointment cita, String texto) {
         String email = cita.getPaciente().getUsuario().getEmail();
         String nombre = cita.getPaciente().getUsuario().getNombre();
-        inbox.crearParaEmail(email, "Indicaciones de tu consulta", texto, "INDICACION", cita.getId());
-        String correo = "Hola " + nombre + ",\n\n" + texto
-                + "\n\nEsto es lo que te dejó tu médico en Hospy. Si algo empeora, vuelve a consultar.\n\n— Equipo Hospy";
-        return enviar(email, "Indicaciones de tu consulta", correo);
+        String medico = cita.getMedico().getUsuario().getNombre();
+        String paciente = "Hola " + nombre + ", tu consulta quedó concluida.\n\n" + texto
+                + "\n\nSi algo empeora, vuelve a consultar.\n\n— Equipo Hospy";
+        inbox.crearParaEmail(email, "Consulta concluida", paciente, "CONSULTA_CONCLUIDA", cita.getId());
+        inbox.crear(cita.getMedico().getUsuario(), "Consulta concluida",
+                "Concluiste la consulta de " + nombre + ".\n\n" + texto,
+                "CONSULTA_CONCLUIDA", cita.getId());
+        String admin = medico + " concluyó la consulta de " + nombre + ".\n\n" + texto;
+        usuarioRepository.findByRolAndActivoTrue(Role.ADMIN).forEach(u ->
+                inbox.crear(u, "Consulta concluida", admin, "CONSULTA_CONCLUIDA", cita.getId()));
+        return enviar(email, "Consulta concluida", paciente);
     }
 
     public boolean notificarCitaCancelada(Appointment cita) {

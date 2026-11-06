@@ -334,6 +334,8 @@ public class AppointmentService {
         if (medicamentos.isBlank() && cuidados.isBlank()) {
             throw new RuntimeException("Elige un medicamento o escribe qué debe hacer el paciente.");
         }
+        cita.setEstado(AppointmentStatus.COMPLETADA);
+        citaRepository.save(cita);
         String medico = cita.getMedico().getUsuario().getNombre();
         StringBuilder mensaje = new StringBuilder();
         mensaje.append(medico).append(" te dejó estas indicaciones de la consulta.");

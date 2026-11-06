@@ -1342,7 +1342,7 @@ public class AiService {
                 " | Motivo inicial: " + nvl(req.getMotivoInicial()) +
                 " | Transcripción consulta:\n" + req.getTranscripcionConsulta();
 
-        Optional<String> llm = llamarLlm(system, user);
+        Optional<String> llm = llamarLlm(system, user, true);
         if (llm.isEmpty()) return soapMock(req);
         try {
             return leerSoap(llm.get());
@@ -1371,7 +1371,7 @@ public class AiService {
                 "\nDiálogo previo:\n" + (dialogo.isBlank() ? "aún no empieza" : dialogo) +
                 "\nPregunta del médico: " + (req.getPregunta() == null || req.getPregunta().isBlank()
                 ? "saluda y cuenta con tus palabras lo que te trajo" : req.getPregunta());
-        Optional<String> llm = llamarLlm(system, user);
+        Optional<String> llm = llamarLlm(system, user, true);
         if (llm.isEmpty()) return consultaMock(req);
         try {
             AiConsultaSimResponse r = leerConsulta(llm.get());

@@ -62,8 +62,8 @@ public class DoctorPortalController {
     public ResponseEntity<ApiMessage> enviarIndicacion(@PathVariable Long id, @RequestBody IndicacionRequest req) {
         boolean correo = citaService.enviarIndicacion(id, emailActual(), req);
         String aviso = correo
-                ? "Listo. Le llegó a la campana y también al correo."
-                : "Listo. Le llegó a la campana. El correo no salió en este momento.";
+                ? "Consulta concluida. Le llegó a la campana y al correo. El administrador también la ve."
+                : "Consulta concluida. Le llegó a la campana. El correo no salió; el administrador la ve en Citas.";
         return ResponseEntity.ok(new ApiMessage(aviso));
     }
 
