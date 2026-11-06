@@ -65,7 +65,7 @@ public class NotificationInboxService {
     }
 
     @Transactional
-    public void cerrarCitasYaAvisadas() {
+    public void closeAlreadyNotifiedVisits() {
         List<Notification> avisos = new java.util.ArrayList<>();
         avisos.addAll(notificacionRepository.findByTipo("INDICACION"));
         avisos.addAll(notificacionRepository.findByTipo("CONSULTA_CONCLUIDA"));
@@ -80,7 +80,7 @@ public class NotificationInboxService {
                     cita.setConcluidaEn(aviso.getCreadaEn() != null ? aviso.getCreadaEn() : LocalDateTime.now());
                 }
                 if (cita.getReceta() == null || cita.getReceta().isBlank()) {
-                    String meds = extraerMedicamentos(aviso.getMensaje());
+                    String meds = extractMedications(aviso.getMensaje());
                     if (!meds.isBlank()) cita.setReceta(meds);
                 }
                 citaRepository.save(cita);
@@ -88,7 +88,7 @@ public class NotificationInboxService {
         });
     }
 
-    private String extraerMedicamentos(String mensaje) {
+    private String extractMedications(String mensaje) {
         if (mensaje == null) return "";
         int inicio = mensaje.indexOf("Medicamentos:");
         if (inicio < 0) return "";
@@ -98,7 +98,7 @@ public class NotificationInboxService {
     }
 
     @Transactional
-    public void avisarAceptadasSinAviso() {
+    public void notifyAcceptedWithoutNotice() {
         citaRepository.findByEstado(AppointmentStatus.ACEPTADA).forEach(cita -> {
             if (cita.getId() == null || notificacionRepository.existsByCitaIdAndTipo(cita.getId(), "CITA_ACEPTADA")) {
                 return;

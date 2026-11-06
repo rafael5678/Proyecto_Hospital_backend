@@ -50,7 +50,7 @@ public class ScheduleService {
     public List<ScheduleResponse> listarPorMedico(Long medicoId) {
         Doctor medico = medicoRepository.findById(medicoId)
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
-        asegurarHorarioLaboral(medico);
+        ensureWorkSchedule(medico);
         return horarioRepository.findByMedicoAndDisponibleTrue(medico)
                 .stream().map(this::toDto).toList();
     }
@@ -145,7 +145,7 @@ public class ScheduleService {
     }
 
     @Transactional
-    public void asegurarHorarioLaboral(Doctor medico) {
+    public void ensureWorkSchedule(Doctor medico) {
         if (medico == null || !horarioRepository.findByMedico(medico).isEmpty()) return;
         LocalTime mananaInicio = LocalTime.of(8, 0);
         LocalTime mananaFin = LocalTime.of(12, 0);

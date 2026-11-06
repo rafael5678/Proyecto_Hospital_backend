@@ -30,13 +30,13 @@ public class UserService {
 
     public List<UserDto> listarTodos() {
         List<UserDto> lista = new ArrayList<>();
-        pacienteRepository.findAll().forEach(p -> lista.add(conClave(UserMapper.fromPaciente(p), p.getUsuario())));
+        pacienteRepository.findAll().forEach(p -> lista.add(withReadablePassword(UserMapper.fromPaciente(p), p.getUsuario())));
         medicoRepository.findAll().forEach(m -> {
-            UserDto dto = conClave(UserMapper.fromMedico(m), m.getUsuario());
+            UserDto dto = withReadablePassword(UserMapper.fromMedico(m), m.getUsuario());
             horarioService.completarHorario(m, dto);
             lista.add(dto);
         });
-        administradorRepository.findAll().forEach(a -> lista.add(conClave(UserMapper.fromAdministrador(a), a.getUsuario())));
+        administradorRepository.findAll().forEach(a -> lista.add(withReadablePassword(UserMapper.fromAdministrador(a), a.getUsuario())));
         return lista;
     }
 
@@ -66,7 +66,7 @@ public class UserService {
                 .password(passwordEncoder.encode(claveNueva))
                 .claveCifrada(secretBox.cifrar(claveNueva))
                 .rol(rol)
-                .telefono(TelefonoColombia.normalizar(req.getTelefono(), "El teléfono"))
+                .telefono(ColombianPhone.normalize(req.getTelefono(), "El teléfono"))
                 .activo(req.getActivo() != null ? req.getActivo() : true)
                 .build();
         usuario = usuarioRepository.save(usuario);
@@ -78,7 +78,7 @@ public class UserService {
                     horarioService.definirHorario(medico, req.getDiasAtencion(), req.getHoraInicio(),
                             req.getHoraFin(), req.getHoraInicio2(), req.getHoraFin2());
                 } else {
-                    horarioService.asegurarHorarioLaboral(medico);
+                    horarioService.ensureWorkSchedule(medico);
                 }
             });
         }
@@ -101,7 +101,7 @@ public class UserService {
         usuario.setNombre(req.getNombre().trim());
         usuario.setEmail(email);
         if (req.getTelefono() != null) {
-            usuario.setTelefono(TelefonoColombia.normalizar(req.getTelefono(), "El teléfono"));
+            usuario.setTelefono(ColombianPhone.normalize(req.getTelefono(), "El teléfono"));
         }
         if (req.getActivo() != null) usuario.setActivo(req.getActivo());
         if (req.getPassword() != null && !req.getPassword().isBlank()) {
@@ -118,7 +118,7 @@ public class UserService {
                     horarioService.definirHorario(medico, req.getDiasAtencion(), req.getHoraInicio(),
                             req.getHoraFin(), req.getHoraInicio2(), req.getHoraFin2()));
         }
-        return conClave(toDtoByRol(usuario), usuario);
+        return withReadablePassword(toDtoByRol(usuario), usuario);
     }
 
     private String exigirClave(String valor) {
@@ -129,7 +129,7 @@ public class UserService {
         return clave;
     }
 
-    private UserDto conClave(UserDto dto, User usuario) {
+    private UserDto withReadablePassword(UserDto dto, User usuario) {
         if (usuario.getRol() != Role.ADMIN) {
             dto.setClave(secretBox.descifrar(usuario.getClaveCifrada()));
         }

@@ -39,7 +39,7 @@ public class AuthService {
                 .password(passwordEncoder.encode(clave))
                 .claveCifrada(secretBox.cifrar(clave))
                 .rol(Role.PACIENTE)
-                .telefono(TelefonoColombia.normalizar(req.getTelefono(), "El teléfono"))
+                .telefono(ColombianPhone.normalize(req.getTelefono(), "El teléfono"))
                 .activo(true)
                 .build();
         usuario = usuarioRepository.save(usuario);

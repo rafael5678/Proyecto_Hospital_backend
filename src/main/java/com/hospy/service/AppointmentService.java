@@ -2,7 +2,7 @@ package com.hospy.service;
 
 import com.hospy.dto.AppointmentRequest;
 import com.hospy.dto.AppointmentResponse;
-import com.hospy.dto.IndicacionRequest;
+import com.hospy.dto.PrescriptionRequest;
 import com.hospy.dto.SlotResponse;
 import com.hospy.dto.PatientProfileDto;
 import com.hospy.dto.RescheduleAppointmentRequest;
@@ -44,7 +44,7 @@ public class AppointmentService {
                 .orElseThrow(() -> new RuntimeException("Perfil de paciente no encontrado"));
         Doctor medico = medicoRepository.findByIdForUpdate(req.getMedicoId())
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
-        horarioService.asegurarHorarioLaboral(medico);
+        horarioService.ensureWorkSchedule(medico);
 
         /* ====== Repriorización automática por gravedad ====== */
         String aviso = null;
@@ -91,10 +91,10 @@ public class AppointmentService {
                 cambioCitaRepository.save(cambio);
 
                 /* Notificar al paciente desplazado y al médico */
-                var notif = notificacionCitaService.notificarRepriorizacion(
+                var notif = notificacionCitaService.notifyReprioritization(
                         existente, fechaAnterior, nuevaPrioridad, nvl(req.getTriageSeveridad()));
-                cambio.setCorreoPacienteEnviado(notif.pacienteEnviado());
-                cambio.setCorreoMedicoEnviado(notif.medicoEnviado());
+                cambio.setCorreoPacienteEnviado(notif.patientSent());
+                cambio.setCorreoMedicoEnviado(notif.doctorSent());
                 cambioCitaRepository.save(cambio);
                 aviso = "Se priorizó tu caso. Otra cita de menor gravedad se reprogramó y se avisó por correo.";
             } else {
@@ -127,7 +127,7 @@ public class AppointmentService {
                 .dermatologiaTopDiagnostico(req.getDermatologiaTopDiagnostico())
                 .build();
         Appointment guardada = citaRepository.save(cita);
-        notificacionCitaService.notificarNuevaCita(guardada);
+        notificacionCitaService.notifyNewAppointment(guardada);
         var dto = AppointmentMapper.toDto(guardada);
         dto.setAvisoAgenda(aviso);
         return dto;
@@ -160,7 +160,7 @@ public class AppointmentService {
 
     /** Una sola lectura de horarios y citas; recorre ventanas laborales, no cada media hora del mes. */
     private List<LocalDateTime> slotsLibres(Doctor medico, LocalDateTime desde, int max) {
-        horarioService.asegurarHorarioLaboral(medico);
+        horarioService.ensureWorkSchedule(medico);
         var horarios = horarioRepository.findByMedicoAndDisponibleTrue(medico);
         var estados = List.of(AppointmentStatus.PENDIENTE, AppointmentStatus.ACEPTADA);
         Set<LocalDateTime> ocupadas = new HashSet<>();
@@ -271,16 +271,16 @@ public class AppointmentService {
         cambio.setRealizadoPor(adminEmail);
         cambioCitaRepository.save(cambio);
 
-        var notificacion = notificacionCitaService.notificarCambio(cita, fechaAnterior, cambio.getMotivo());
-        cambio.setCorreoPacienteEnviado(notificacion.pacienteEnviado());
-        cambio.setCorreoMedicoEnviado(notificacion.medicoEnviado());
+        var notificacion = notificacionCitaService.notifyScheduleChange(cita, fechaAnterior, cambio.getMotivo());
+        cambio.setCorreoPacienteEnviado(notificacion.patientSent());
+        cambio.setCorreoMedicoEnviado(notificacion.doctorSent());
         cambioCitaRepository.save(cambio);
 
-        String mensaje = notificacion.pacienteEnviado() && notificacion.medicoEnviado()
+        String mensaje = notificacion.patientSent() && notificacion.doctorSent()
                 ? "Cambio guardado; SMTP aceptó los correos para paciente y médico"
                 : "Cambio guardado; no se confirmó el envío a todos los destinatarios. Revisa la configuración SMTP";
-        return new RescheduleAppointmentResponse(AppointmentMapper.toDto(cita), notificacion.pacienteEnviado(),
-                notificacion.medicoEnviado(), mensaje);
+        return new RescheduleAppointmentResponse(AppointmentMapper.toDto(cita), notificacion.patientSent(),
+                notificacion.doctorSent(), mensaje);
     }
 
     @Transactional
@@ -294,7 +294,7 @@ public class AppointmentService {
         }
         cita.setEstado(AppointmentStatus.CANCELADA);
         Appointment guardada = citaRepository.save(cita);
-        notificacionCitaService.notificarCitaCancelada(guardada);
+        notificacionCitaService.notifyAppointmentCancelled(guardada);
         return AppointmentMapper.toDto(guardada);
     }
 
@@ -304,7 +304,7 @@ public class AppointmentService {
         validarMedico(cita, emailMedico);
         cita.setEstado(AppointmentStatus.ACEPTADA);
         Appointment guardada = citaRepository.save(cita);
-        notificacionCitaService.notificarCitaAceptada(guardada);
+        notificacionCitaService.notifyAppointmentAccepted(guardada);
         return AppointmentMapper.toDto(guardada);
     }
 
@@ -314,7 +314,7 @@ public class AppointmentService {
         validarMedico(cita, emailMedico);
         cita.setEstado(AppointmentStatus.RECHAZADA);
         Appointment guardada = citaRepository.save(cita);
-        notificacionCitaService.notificarCitaRechazada(guardada);
+        notificacionCitaService.notifyAppointmentRejected(guardada);
         return AppointmentMapper.toDto(guardada);
     }
 
@@ -325,7 +325,7 @@ public class AppointmentService {
     }
 
     @Transactional
-    public boolean enviarIndicacion(Long citaId, String emailMedico, IndicacionRequest req) {
+    public boolean sendPrescription(Long citaId, String emailMedico, PrescriptionRequest req) {
         Appointment cita = buscar(citaId);
         validarMedico(cita, emailMedico);
         String medicamentos = req == null || req.getMedicamentos() == null ? "" : req.getMedicamentos().trim();
@@ -344,7 +344,7 @@ public class AppointmentService {
         if (!resumen.isBlank()) mensaje.append("\n\nQué vimos: ").append(resumen);
         if (!medicamentos.isBlank()) mensaje.append("\n\nMedicamentos: ").append(medicamentos);
         if (!cuidados.isBlank()) mensaje.append("\n\nQué hacer: ").append(cuidados);
-        return notificacionCitaService.notificarIndicacion(cita, mensaje.toString());
+        return notificacionCitaService.notifyPrescription(cita, mensaje.toString());
     }
 
     public List<AppointmentResponse> historialPacienteDeCita(Long citaId, String emailMedico) {

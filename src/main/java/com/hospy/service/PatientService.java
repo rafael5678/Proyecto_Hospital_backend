@@ -32,8 +32,8 @@ public class PatientService {
         Patient p = buscarPorEmail(email);
         User u = p.getUsuario();
         if (dto.getNombre() != null) u.setNombre(dto.getNombre());
-        if (dto.getTelefono() != null) u.setTelefono(TelefonoColombia.normalizar(dto.getTelefono(), "El teléfono"));
-        if (dto.getDocumento() != null) p.setDocumento(CedulaColombia.normalizar(dto.getDocumento()));
+        if (dto.getTelefono() != null) u.setTelefono(ColombianPhone.normalize(dto.getTelefono(), "El teléfono"));
+        if (dto.getDocumento() != null) p.setDocumento(ColombianId.normalize(dto.getDocumento()));
         if (dto.getFechaNacimiento() != null) p.setFechaNacimiento(dto.getFechaNacimiento());
         if (dto.getGenero() != null) p.setGenero(dto.getGenero());
         if (dto.getTipoSangre() != null) p.setTipoSangre(dto.getTipoSangre());
@@ -42,7 +42,7 @@ public class PatientService {
         if (dto.getAlergias() != null) p.setAlergias(dto.getAlergias());
         if (dto.getContactoEmergencia() != null) p.setContactoEmergencia(dto.getContactoEmergencia());
         if (dto.getTelefonoEmergencia() != null) {
-            p.setTelefonoEmergencia(TelefonoColombia.normalizar(dto.getTelefonoEmergencia(), "El teléfono de emergencia"));
+            p.setTelefonoEmergencia(ColombianPhone.normalize(dto.getTelefonoEmergencia(), "El teléfono de emergencia"));
         }
         if (dto.getObservaciones() != null) p.setObservaciones(dto.getObservaciones());
         return toPerfilDto(pacienteRepository.save(p));

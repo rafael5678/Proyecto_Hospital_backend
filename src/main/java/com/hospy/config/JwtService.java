@@ -32,28 +32,28 @@ public class JwtService {
                 .compact();
     }
 
-    public String extraerEmail(String token) {
-        return extraerClaims(token).getSubject();
+    public String extractEmail(String token) {
+        return extractClaims(token).getSubject();
     }
 
-    public String extraerRol(String token) {
-        return extraerClaims(token).get("rol", String.class);
+    public String extractRole(String token) {
+        return extractClaims(token).get("rol", String.class);
     }
 
-    public Long extraerUserId(String token) {
-        return extraerClaims(token).get("userId", Long.class);
+    public Long extractUserId(String token) {
+        return extractClaims(token).get("userId", Long.class);
     }
 
     public boolean esValido(String token) {
         try {
-            Claims claims = extraerClaims(token);
+            Claims claims = extractClaims(token);
             return claims.getExpiration().after(new Date());
         } catch (Exception e) {
             return false;
         }
     }
 
-    private Claims extraerClaims(String token) {
+    private Claims extractClaims(String token) {
         return Jwts.parser()
                 .verifyWith(getKey())
                 .build()

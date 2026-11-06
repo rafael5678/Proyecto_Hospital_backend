@@ -34,21 +34,21 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        asegurarAdminDemo();
+        ensureDemoAdmin();
         migrarPerfilesExistentes();
-        asegurarMedicoDemo();
-        asegurarMedico("neurologia@hospy.com", "Dra. Ana López", "Neurología", "MED-2024-002");
-        asegurarMedico("dermatologia@hospy.com", "Dr. Carlos Pérez", "Dermatología", "MED-2024-003");
-        asegurarMedico("traumatologia@hospy.com", "Dr. Andrés Molina", "Traumatología", "MED-2024-004");
-        asegurarMedico("general@hospy.com", "Dr. Luis Herrera", "Medicina General", "MED-2024-005");
-        medicoRepository.findAll().forEach(horarioService::asegurarHorarioLaboral);
-        asegurarPacienteDemo("pedro@hospy.com", "Pedro Patient", "123456");
-        asegurarPacienteDemo("paciente@hospy.com", "Juan Reyes", "Paciente123");
-        notificacionInboxService.cerrarCitasYaAvisadas();
-        notificacionInboxService.avisarAceptadasSinAviso();
+        ensureDemoDoctor();
+        ensureDoctor("neurologia@hospy.com", "Dra. Ana López", "Neurología", "MED-2024-002");
+        ensureDoctor("dermatologia@hospy.com", "Dr. Carlos Pérez", "Dermatología", "MED-2024-003");
+        ensureDoctor("traumatologia@hospy.com", "Dr. Andrés Molina", "Traumatología", "MED-2024-004");
+        ensureDoctor("general@hospy.com", "Dr. Luis Herrera", "Medicina General", "MED-2024-005");
+        medicoRepository.findAll().forEach(horarioService::ensureWorkSchedule);
+        ensureDemoPatient("pedro@hospy.com", "Pedro Patient", "123456");
+        ensureDemoPatient("paciente@hospy.com", "Juan Reyes", "Paciente123");
+        notificacionInboxService.closeAlreadyNotifiedVisits();
+        notificacionInboxService.notifyAcceptedWithoutNotice();
     }
 
-    private void asegurarPacienteDemo(String email, String nombre, String clave) {
+    private void ensureDemoPatient(String email, String nombre, String clave) {
         usuarioRepository.findByEmail(email).ifPresentOrElse(u -> {
             u.setRol(Role.PACIENTE);
             u.setActivo(true);
@@ -70,7 +70,7 @@ public class DataInitializer implements CommandLineRunner {
         });
     }
 
-    private void asegurarMedico(String email, String nombre, String especialidad, String licencia) {
+    private void ensureDoctor(String email, String nombre, String especialidad, String licencia) {
         UserRequest req = new UserRequest();
         req.setNombre(nombre);
         req.setEmail(email);
@@ -86,10 +86,10 @@ public class DataInitializer implements CommandLineRunner {
             medicoRepository.findByUsuario(u).ifPresentOrElse(m -> {
                 m.setEspecialidad(especialidad);
                 medicoRepository.save(m);
-                horarioService.asegurarHorarioLaboral(m);
+                horarioService.ensureWorkSchedule(m);
             }, () -> {
                 perfilService.crearPerfil(u, req);
-                medicoRepository.findByUsuario(u).ifPresent(horarioService::asegurarHorarioLaboral);
+                medicoRepository.findByUsuario(u).ifPresent(horarioService::ensureWorkSchedule);
             });
         }, () -> {
             User u = usuarioRepository.save(User.builder()
@@ -97,12 +97,12 @@ public class DataInitializer implements CommandLineRunner {
                     .password(passwordEncoder.encode("Medico123"))
                     .rol(Role.MEDICO).activo(true).build());
             perfilService.crearPerfil(u, req);
-            medicoRepository.findByUsuario(u).ifPresent(horarioService::asegurarHorarioLaboral);
+            medicoRepository.findByUsuario(u).ifPresent(horarioService::ensureWorkSchedule);
         });
     }
 
     /** El admin de demo se crea una vez. Si ya existe, no se le pisa la clave. */
-    private void asegurarAdminDemo() {
+    private void ensureDemoAdmin() {
         usuarioRepository.findByEmail("admin@hospy.com").ifPresentOrElse(u -> {
             u.setRol(Role.ADMIN);
             u.setActivo(true);
@@ -126,7 +126,7 @@ public class DataInitializer implements CommandLineRunner {
         });
     }
 
-    private void asegurarMedicoDemo() {
+    private void ensureDemoDoctor() {
         UserRequest req = new UserRequest();
         req.setNombre("Dr. María García");
         req.setEmail("doctor@hospy.com");

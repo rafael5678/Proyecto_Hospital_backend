@@ -25,7 +25,7 @@ public class ProfileService {
         switch (usuario.getRol()) {
             case PACIENTE -> pacienteRepository.save(Patient.builder()
                     .usuario(usuario)
-                    .documento(CedulaColombia.normalizar(req.getDocumento()))
+                    .documento(ColombianId.normalize(req.getDocumento()))
                     .fechaNacimiento(parseFecha(req.getFechaNacimiento()))
                     .genero(req.getGenero())
                     .tipoSangre(req.getTipoSangre())
@@ -33,7 +33,7 @@ public class ProfileService {
                     .ciudad(req.getCiudad())
                     .alergias(req.getAlergias())
                     .contactoEmergencia(req.getContactoEmergencia())
-                    .telefonoEmergencia(TelefonoColombia.normalizar(req.getTelefonoEmergencia(), "El teléfono de emergencia"))
+                    .telefonoEmergencia(ColombianPhone.normalize(req.getTelefonoEmergencia(), "El teléfono de emergencia"))
                     .observaciones(req.getObservaciones())
                     .build());
             case MEDICO -> medicoRepository.save(Doctor.builder()
@@ -62,7 +62,7 @@ public class ProfileService {
         if (pacienteRepository.findByUsuario(usuario).isEmpty()) {
             pacienteRepository.save(Patient.builder()
                     .usuario(usuario)
-                    .documento(CedulaColombia.normalizar(req.getDocumento()))
+                    .documento(ColombianId.normalize(req.getDocumento()))
                     .fechaNacimiento(req.getFechaNacimiento())
                     .genero(req.getGenero())
                     .tipoSangre(req.getTipoSangre())
@@ -70,7 +70,7 @@ public class ProfileService {
                     .ciudad(req.getCiudad())
                     .alergias(req.getAlergias())
                     .contactoEmergencia(req.getContactoEmergencia())
-                    .telefonoEmergencia(TelefonoColombia.normalizar(req.getTelefonoEmergencia(), "El teléfono de emergencia"))
+                    .telefonoEmergencia(ColombianPhone.normalize(req.getTelefonoEmergencia(), "El teléfono de emergencia"))
                     .observaciones(req.getObservaciones())
                     .build());
         }
@@ -82,7 +82,7 @@ public class ProfileService {
             case PACIENTE -> {
                 var p = pacienteRepository.findByUsuarioId(usuario.getId())
                         .orElseGet(() -> Patient.builder().usuario(usuario).build());
-                if (req.getDocumento() != null) p.setDocumento(CedulaColombia.normalizar(req.getDocumento()));
+                if (req.getDocumento() != null) p.setDocumento(ColombianId.normalize(req.getDocumento()));
                 if (req.getFechaNacimiento() != null) p.setFechaNacimiento(parseFecha(req.getFechaNacimiento()));
                 if (req.getGenero() != null) p.setGenero(req.getGenero());
                 if (req.getTipoSangre() != null) p.setTipoSangre(req.getTipoSangre());
@@ -91,7 +91,7 @@ public class ProfileService {
                 if (req.getAlergias() != null) p.setAlergias(req.getAlergias());
                 if (req.getContactoEmergencia() != null) p.setContactoEmergencia(req.getContactoEmergencia());
                 if (req.getTelefonoEmergencia() != null) {
-                    p.setTelefonoEmergencia(TelefonoColombia.normalizar(req.getTelefonoEmergencia(), "El teléfono de emergencia"));
+                    p.setTelefonoEmergencia(ColombianPhone.normalize(req.getTelefonoEmergencia(), "El teléfono de emergencia"));
                 }
                 if (req.getObservaciones() != null) p.setObservaciones(req.getObservaciones());
                 pacienteRepository.save(p);

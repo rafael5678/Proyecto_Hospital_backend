@@ -37,7 +37,7 @@ public class AppointmentNotificationService {
         this.usuarioRepository = usuarioRepository;
     }
 
-    public ResultadoNotificacion notificarCambio(Appointment cita, LocalDateTime fechaAnterior, String motivo) {
+    public NotificationResult notifyScheduleChange(Appointment cita, LocalDateTime fechaAnterior, String motivo) {
         String asunto = "Cambio en tu cita médica";
         String textoPaciente = "Hola " + cita.getPaciente().getUsuario().getNombre() + ",\n\n" +
                 "La cita con " + cita.getMedico().getUsuario().getNombre() +
@@ -54,10 +54,10 @@ public class AppointmentNotificationService {
                 "CITA_CAMBIO", cita.getId());
         boolean paciente = enviar(cita.getPaciente().getUsuario().getEmail(), asunto, textoPaciente);
         boolean medico = enviar(cita.getMedico().getUsuario().getEmail(), asunto, textoMedico);
-        return new ResultadoNotificacion(paciente, medico);
+        return new NotificationResult(paciente, medico);
     }
 
-    public boolean notificarNuevaCita(Appointment cita) {
+    public boolean notifyNewAppointment(Appointment cita) {
         String asunto = "Nueva cita — resumen IA para revisión";
         String triage = cita.getTriageResumen() == null ? "Sin triage" :
                 "Severidad " + nvl(cita.getTriageSeveridad()) +
@@ -77,7 +77,7 @@ public class AppointmentNotificationService {
         return enviar(cita.getMedico().getUsuario().getEmail(), asunto, contenido);
     }
 
-    public boolean notificarCitaAceptada(Appointment cita) {
+    public boolean notifyAppointmentAccepted(Appointment cita) {
         String asunto = "Tu cita fue aceptada";
         String texto = "Hola " + cita.getPaciente().getUsuario().getNombre() + ",\n\n" +
                 cita.getMedico().getUsuario().getNombre() + " aceptó tu cita del " +
@@ -88,7 +88,7 @@ public class AppointmentNotificationService {
         return enviar(cita.getPaciente().getUsuario().getEmail(), asunto, texto);
     }
 
-    public boolean notificarCitaRechazada(Appointment cita) {
+    public boolean notifyAppointmentRejected(Appointment cita) {
         String asunto = "Tu cita no pudo ser aceptada";
         String texto = "Hola " + cita.getPaciente().getUsuario().getNombre() + ",\n\n" +
                 "La cita del " + FORMATO.format(cita.getFechaHora()) + " con " +
@@ -98,7 +98,7 @@ public class AppointmentNotificationService {
         return enviar(cita.getPaciente().getUsuario().getEmail(), asunto, texto);
     }
 
-    public boolean notificarIndicacion(Appointment cita, String texto) {
+    public boolean notifyPrescription(Appointment cita, String texto) {
         String email = cita.getPaciente().getUsuario().getEmail();
         String nombre = cita.getPaciente().getUsuario().getNombre();
         String medico = cita.getMedico().getUsuario().getNombre();
@@ -120,7 +120,7 @@ public class AppointmentNotificationService {
         return enviar(email, "Consulta concluida", paciente);
     }
 
-    public boolean notificarCitaCancelada(Appointment cita) {
+    public boolean notifyAppointmentCancelled(Appointment cita) {
         String asuntoMedico = "El paciente canceló una cita";
         String textoMedico = "Hola " + cita.getMedico().getUsuario().getNombre() + ",\n\n" +
                 cita.getPaciente().getUsuario().getNombre() + " canceló la cita del " +
@@ -141,7 +141,7 @@ public class AppointmentNotificationService {
     private static String nvl(String s) { return s == null || s.isBlank() ? "no informado" : s; }
 
     /** Avisa solo al paciente cuya cita se movió por otro caso más urgente. */
-    public ResultadoNotificacion notificarRepriorizacion(Appointment citaDesplazada, LocalDateTime fechaAnterior,
+    public NotificationResult notifyReprioritization(Appointment citaDesplazada, LocalDateTime fechaAnterior,
                                                           int prioridadNuevoPaciente, String severidadNuevo) {
         String asuntoPaciente = "Tu cita médica fue reprogramada";
         String textoPaciente = "Hola " + citaDesplazada.getPaciente().getUsuario().getNombre() + ",\n\n" +
@@ -157,7 +157,7 @@ public class AppointmentNotificationService {
         inbox.crearParaEmail(citaDesplazada.getPaciente().getUsuario().getEmail(),
                 "Tu cita fue reprogramada", textoPaciente, "CITA_REPROGRAMADA", citaDesplazada.getId());
         boolean paciente = enviar(citaDesplazada.getPaciente().getUsuario().getEmail(), asuntoPaciente, textoPaciente);
-        return new ResultadoNotificacion(paciente, false);
+        return new NotificationResult(paciente, false);
     }
 
     private boolean enviar(String destinatario, String asunto, String contenido) {
@@ -178,5 +178,5 @@ public class AppointmentNotificationService {
         }
     }
 
-    public record ResultadoNotificacion(boolean pacienteEnviado, boolean medicoEnviado) { }
+    public record NotificationResult(boolean patientSent, boolean doctorSent) { }
 }

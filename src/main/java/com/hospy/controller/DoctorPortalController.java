@@ -59,8 +59,8 @@ public class DoctorPortalController {
     }
 
     @PostMapping("/appointments/{id}/indicacion")
-    public ResponseEntity<ApiMessage> enviarIndicacion(@PathVariable Long id, @RequestBody IndicacionRequest req) {
-        boolean correo = citaService.enviarIndicacion(id, emailActual(), req);
+    public ResponseEntity<ApiMessage> sendPrescription(@PathVariable Long id, @RequestBody PrescriptionRequest req) {
+        boolean correo = citaService.sendPrescription(id, emailActual(), req);
         String aviso = correo
                 ? "Consulta concluida. Le llegó a la campana y al correo. El administrador también la ve."
                 : "Consulta concluida. Le llegó a la campana. El correo no salió; el administrador la ve en Citas.";
