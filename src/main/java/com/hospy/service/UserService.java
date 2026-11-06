@@ -123,8 +123,8 @@ public class UserService {
 
     private String exigirClave(String valor) {
         String clave = valor == null ? "" : valor.trim();
-        if (clave.length() < 6 || clave.length() > 32) {
-            throw new RuntimeException("La clave debe tener entre 6 y 32 caracteres.");
+        if (clave.length() < 6 || clave.length() > 11) {
+            throw new RuntimeException("La clave debe tener entre 6 y 11 caracteres.");
         }
         return clave;
     }

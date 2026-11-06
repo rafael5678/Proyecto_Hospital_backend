@@ -25,7 +25,7 @@ public class ProfileService {
         switch (usuario.getRol()) {
             case PACIENTE -> pacienteRepository.save(Patient.builder()
                     .usuario(usuario)
-                    .documento(req.getDocumento())
+                    .documento(CedulaColombia.normalizar(req.getDocumento()))
                     .fechaNacimiento(parseFecha(req.getFechaNacimiento()))
                     .genero(req.getGenero())
                     .tipoSangre(req.getTipoSangre())
@@ -62,7 +62,7 @@ public class ProfileService {
         if (pacienteRepository.findByUsuario(usuario).isEmpty()) {
             pacienteRepository.save(Patient.builder()
                     .usuario(usuario)
-                    .documento(req.getDocumento())
+                    .documento(CedulaColombia.normalizar(req.getDocumento()))
                     .fechaNacimiento(req.getFechaNacimiento())
                     .genero(req.getGenero())
                     .tipoSangre(req.getTipoSangre())
@@ -79,8 +79,10 @@ public class ProfileService {
     @Transactional
     public void actualizarPerfil(User usuario, UserRequest req) {
         switch (usuario.getRol()) {
-            case PACIENTE -> pacienteRepository.findByUsuario(usuario).ifPresent(p -> {
-                if (req.getDocumento() != null) p.setDocumento(req.getDocumento());
+            case PACIENTE -> {
+                var p = pacienteRepository.findByUsuarioId(usuario.getId())
+                        .orElseGet(() -> Patient.builder().usuario(usuario).build());
+                if (req.getDocumento() != null) p.setDocumento(CedulaColombia.normalizar(req.getDocumento()));
                 if (req.getFechaNacimiento() != null) p.setFechaNacimiento(parseFecha(req.getFechaNacimiento()));
                 if (req.getGenero() != null) p.setGenero(req.getGenero());
                 if (req.getTipoSangre() != null) p.setTipoSangre(req.getTipoSangre());
@@ -93,7 +95,7 @@ public class ProfileService {
                 }
                 if (req.getObservaciones() != null) p.setObservaciones(req.getObservaciones());
                 pacienteRepository.save(p);
-            });
+            }
             case MEDICO -> medicoRepository.findByUsuario(usuario).ifPresent(m -> {
                 if (req.getEspecialidad() != null && !req.getEspecialidad().isBlank()) m.setEspecialidad(req.getEspecialidad());
                 if (req.getNumeroLicencia() != null) m.setNumeroLicencia(req.getNumeroLicencia());

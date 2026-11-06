@@ -33,7 +33,7 @@ public class PatientService {
         User u = p.getUsuario();
         if (dto.getNombre() != null) u.setNombre(dto.getNombre());
         if (dto.getTelefono() != null) u.setTelefono(TelefonoColombia.normalizar(dto.getTelefono(), "El teléfono"));
-        if (dto.getDocumento() != null) p.setDocumento(dto.getDocumento());
+        if (dto.getDocumento() != null) p.setDocumento(CedulaColombia.normalizar(dto.getDocumento()));
         if (dto.getFechaNacimiento() != null) p.setFechaNacimiento(dto.getFechaNacimiento());
         if (dto.getGenero() != null) p.setGenero(dto.getGenero());
         if (dto.getTipoSangre() != null) p.setTipoSangre(dto.getTipoSangre());
