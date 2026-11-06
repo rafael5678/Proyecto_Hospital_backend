@@ -335,6 +335,8 @@ public class AppointmentService {
             throw new RuntimeException("Elige un medicamento o escribe qué debe hacer el paciente.");
         }
         cita.setEstado(AppointmentStatus.COMPLETADA);
+        cita.setConcluidaEn(LocalDateTime.now());
+        cita.setReceta(medicamentos);
         citaRepository.save(cita);
         String medico = cita.getMedico().getUsuario().getNombre();
         StringBuilder mensaje = new StringBuilder();

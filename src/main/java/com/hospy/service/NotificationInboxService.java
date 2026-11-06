@@ -65,6 +65,39 @@ public class NotificationInboxService {
     }
 
     @Transactional
+    public void cerrarCitasYaAvisadas() {
+        List<Notification> avisos = new java.util.ArrayList<>();
+        avisos.addAll(notificacionRepository.findByTipo("INDICACION"));
+        avisos.addAll(notificacionRepository.findByTipo("CONSULTA_CONCLUIDA"));
+        avisos.forEach(aviso -> {
+            if (aviso.getCitaId() == null) return;
+            citaRepository.findById(aviso.getCitaId()).ifPresent(cita -> {
+                if (cita.getEstado() == AppointmentStatus.CANCELADA || cita.getEstado() == AppointmentStatus.RECHAZADA) {
+                    return;
+                }
+                cita.setEstado(AppointmentStatus.COMPLETADA);
+                if (cita.getConcluidaEn() == null) {
+                    cita.setConcluidaEn(aviso.getCreadaEn() != null ? aviso.getCreadaEn() : LocalDateTime.now());
+                }
+                if (cita.getReceta() == null || cita.getReceta().isBlank()) {
+                    String meds = extraerMedicamentos(aviso.getMensaje());
+                    if (!meds.isBlank()) cita.setReceta(meds);
+                }
+                citaRepository.save(cita);
+            });
+        });
+    }
+
+    private String extraerMedicamentos(String mensaje) {
+        if (mensaje == null) return "";
+        int inicio = mensaje.indexOf("Medicamentos:");
+        if (inicio < 0) return "";
+        String resto = mensaje.substring(inicio + "Medicamentos:".length()).trim();
+        int corte = resto.indexOf("\n\n");
+        return (corte >= 0 ? resto.substring(0, corte) : resto).trim();
+    }
+
+    @Transactional
     public void avisarAceptadasSinAviso() {
         citaRepository.findByEstado(AppointmentStatus.ACEPTADA).forEach(cita -> {
             if (cita.getId() == null || notificacionRepository.existsByCitaIdAndTipo(cita.getId(), "CITA_ACEPTADA")) {

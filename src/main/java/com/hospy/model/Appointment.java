@@ -38,6 +38,11 @@ public class Appointment {
 
     private String notas;
 
+    @Column(columnDefinition = "TEXT")
+    private String receta;
+
+    private LocalDateTime concluidaEn;
+
     /* ====== Campos IA adjuntos al momento de AGENDAR (guardados automáticamente) ====== */
     /* Triage NLP BERT/RoBERTa (ESI/MTS) */
     private String triageSeveridad;        /* "ROJO / NARANJA / AMARILLO / VERDE / AZUL" */

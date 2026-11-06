@@ -19,6 +19,9 @@ public class AppointmentResponse {
     private String estado;
     private String motivo;
     private String notas;
+    private String receta;
+    private LocalDateTime concluidaEn;
+    private Boolean adelantada;
     private String triageSeveridad;
     private Integer triageNivelEsi;
     private Integer triagePrioridad;

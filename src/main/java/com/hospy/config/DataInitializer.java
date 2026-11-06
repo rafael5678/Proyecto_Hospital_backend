@@ -44,6 +44,7 @@ public class DataInitializer implements CommandLineRunner {
         medicoRepository.findAll().forEach(horarioService::asegurarHorarioLaboral);
         asegurarPacienteDemo("pedro@hospy.com", "Pedro Patient", "123456");
         asegurarPacienteDemo("paciente@hospy.com", "Juan Reyes", "Paciente123");
+        notificacionInboxService.cerrarCitasYaAvisadas();
         notificacionInboxService.avisarAceptadasSinAviso();
     }
 

@@ -102,7 +102,13 @@ public class AppointmentNotificationService {
         String email = cita.getPaciente().getUsuario().getEmail();
         String nombre = cita.getPaciente().getUsuario().getNombre();
         String medico = cita.getMedico().getUsuario().getNombre();
-        String paciente = "Hola " + nombre + ", tu consulta quedó concluida.\n\n" + texto
+        boolean adelantada = cita.getConcluidaEn() != null && cita.getFechaHora() != null
+                && cita.getConcluidaEn().isBefore(cita.getFechaHora());
+        String cuando = adelantada
+                ? "Tu consulta se adelantó. Estaba para el " + FORMATO.format(cita.getFechaHora())
+                    + " y ya quedó hecha. Aceptada y concluida.\n\n"
+                : "Tu consulta quedó aceptada y concluida.\n\n";
+        String paciente = "Hola " + nombre + ",\n\n" + cuando + texto
                 + "\n\nSi algo empeora, vuelve a consultar.\n\n— Equipo Hospy";
         inbox.crearParaEmail(email, "Consulta concluida", paciente, "CONSULTA_CONCLUIDA", cita.getId());
         inbox.crear(cita.getMedico().getUsuario(), "Consulta concluida",
