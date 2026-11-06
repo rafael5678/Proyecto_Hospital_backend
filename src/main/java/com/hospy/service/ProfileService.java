@@ -33,7 +33,7 @@ public class ProfileService {
                     .ciudad(req.getCiudad())
                     .alergias(req.getAlergias())
                     .contactoEmergencia(req.getContactoEmergencia())
-                    .telefonoEmergencia(req.getTelefonoEmergencia())
+                    .telefonoEmergencia(TelefonoColombia.normalizar(req.getTelefonoEmergencia(), "El teléfono de emergencia"))
                     .observaciones(req.getObservaciones())
                     .build());
             case MEDICO -> medicoRepository.save(Doctor.builder()
@@ -70,7 +70,7 @@ public class ProfileService {
                     .ciudad(req.getCiudad())
                     .alergias(req.getAlergias())
                     .contactoEmergencia(req.getContactoEmergencia())
-                    .telefonoEmergencia(req.getTelefonoEmergencia())
+                    .telefonoEmergencia(TelefonoColombia.normalizar(req.getTelefonoEmergencia(), "El teléfono de emergencia"))
                     .observaciones(req.getObservaciones())
                     .build());
         }
@@ -88,7 +88,9 @@ public class ProfileService {
                 if (req.getCiudad() != null) p.setCiudad(req.getCiudad());
                 if (req.getAlergias() != null) p.setAlergias(req.getAlergias());
                 if (req.getContactoEmergencia() != null) p.setContactoEmergencia(req.getContactoEmergencia());
-                if (req.getTelefonoEmergencia() != null) p.setTelefonoEmergencia(req.getTelefonoEmergencia());
+                if (req.getTelefonoEmergencia() != null) {
+                    p.setTelefonoEmergencia(TelefonoColombia.normalizar(req.getTelefonoEmergencia(), "El teléfono de emergencia"));
+                }
                 if (req.getObservaciones() != null) p.setObservaciones(req.getObservaciones());
                 pacienteRepository.save(p);
             });

@@ -59,16 +59,14 @@ public class UserService {
         if (rol == Role.PACIENTE && (req.getDocumento() == null || req.getDocumento().isBlank())) {
             throw new RuntimeException("El paciente requiere documento de identidad.");
         }
-        if (req.getPassword() == null || req.getPassword().isBlank()) {
-            throw new RuntimeException("Indica la contraseña.");
-        }
+        String claveNueva = exigirClave(req.getPassword());
         User usuario = User.builder()
                 .nombre(req.getNombre())
                 .email(req.getEmail())
-                .password(passwordEncoder.encode(req.getPassword()))
-                .claveCifrada(secretBox.cifrar(req.getPassword().trim()))
+                .password(passwordEncoder.encode(claveNueva))
+                .claveCifrada(secretBox.cifrar(claveNueva))
                 .rol(rol)
-                .telefono(req.getTelefono())
+                .telefono(TelefonoColombia.normalizar(req.getTelefono(), "El teléfono"))
                 .activo(req.getActivo() != null ? req.getActivo() : true)
                 .build();
         usuario = usuarioRepository.save(usuario);
@@ -102,13 +100,12 @@ public class UserService {
         }
         usuario.setNombre(req.getNombre().trim());
         usuario.setEmail(email);
-        if (req.getTelefono() != null) usuario.setTelefono(req.getTelefono());
+        if (req.getTelefono() != null) {
+            usuario.setTelefono(TelefonoColombia.normalizar(req.getTelefono(), "El teléfono"));
+        }
         if (req.getActivo() != null) usuario.setActivo(req.getActivo());
         if (req.getPassword() != null && !req.getPassword().isBlank()) {
-            String clave = req.getPassword().trim();
-            if (clave.length() < 6) {
-                throw new RuntimeException("La nueva clave debe tener al menos 6 caracteres.");
-            }
+            String clave = exigirClave(req.getPassword());
             usuario.setPassword(passwordEncoder.encode(clave));
             usuario.setClaveCifrada(secretBox.cifrar(clave));
         }
@@ -122,6 +119,14 @@ public class UserService {
                             req.getHoraFin(), req.getHoraInicio2(), req.getHoraFin2()));
         }
         return conClave(toDtoByRol(usuario), usuario);
+    }
+
+    private String exigirClave(String valor) {
+        String clave = valor == null ? "" : valor.trim();
+        if (clave.length() < 6 || clave.length() > 32) {
+            throw new RuntimeException("La clave debe tener entre 6 y 32 caracteres.");
+        }
+        return clave;
     }
 
     private UserDto conClave(UserDto dto, User usuario) {
@@ -145,10 +150,7 @@ public class UserService {
         if (usuario.getRol() == Role.ADMIN) {
             throw new RuntimeException("La clave del administrador no se cambia desde esta pantalla.");
         }
-        String clave = nuevaClave == null ? "" : nuevaClave.trim();
-        if (clave.length() < 6) {
-            throw new RuntimeException("La nueva clave debe tener al menos 6 caracteres.");
-        }
+        String clave = exigirClave(nuevaClave);
         usuario.setPassword(passwordEncoder.encode(clave));
         usuario.setClaveCifrada(secretBox.cifrar(clave));
         usuarioRepository.save(usuario);

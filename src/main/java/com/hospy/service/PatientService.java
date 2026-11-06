@@ -32,7 +32,7 @@ public class PatientService {
         Patient p = buscarPorEmail(email);
         User u = p.getUsuario();
         if (dto.getNombre() != null) u.setNombre(dto.getNombre());
-        if (dto.getTelefono() != null) u.setTelefono(dto.getTelefono());
+        if (dto.getTelefono() != null) u.setTelefono(TelefonoColombia.normalizar(dto.getTelefono(), "El teléfono"));
         if (dto.getDocumento() != null) p.setDocumento(dto.getDocumento());
         if (dto.getFechaNacimiento() != null) p.setFechaNacimiento(dto.getFechaNacimiento());
         if (dto.getGenero() != null) p.setGenero(dto.getGenero());
@@ -41,7 +41,9 @@ public class PatientService {
         if (dto.getCiudad() != null) p.setCiudad(dto.getCiudad());
         if (dto.getAlergias() != null) p.setAlergias(dto.getAlergias());
         if (dto.getContactoEmergencia() != null) p.setContactoEmergencia(dto.getContactoEmergencia());
-        if (dto.getTelefonoEmergencia() != null) p.setTelefonoEmergencia(dto.getTelefonoEmergencia());
+        if (dto.getTelefonoEmergencia() != null) {
+            p.setTelefonoEmergencia(TelefonoColombia.normalizar(dto.getTelefonoEmergencia(), "El teléfono de emergencia"));
+        }
         if (dto.getObservaciones() != null) p.setObservaciones(dto.getObservaciones());
         return toPerfilDto(pacienteRepository.save(p));
     }

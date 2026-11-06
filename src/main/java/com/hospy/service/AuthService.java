@@ -29,13 +29,17 @@ public class AuthService {
         if (usuarioRepository.existsByEmail(req.getEmail())) {
             throw new RuntimeException("El email ya está registrado");
         }
+        String clave = req.getPassword() == null ? "" : req.getPassword().trim();
+        if (clave.length() < 6 || clave.length() > 32) {
+            throw new RuntimeException("La contraseña debe tener entre 6 y 32 caracteres.");
+        }
         User usuario = User.builder()
                 .nombre(req.getNombre())
                 .email(req.getEmail())
-                .password(passwordEncoder.encode(req.getPassword()))
-                .claveCifrada(secretBox.cifrar(req.getPassword().trim()))
+                .password(passwordEncoder.encode(clave))
+                .claveCifrada(secretBox.cifrar(clave))
                 .rol(Role.PACIENTE)
-                .telefono(req.getTelefono())
+                .telefono(TelefonoColombia.normalizar(req.getTelefono(), "El teléfono"))
                 .activo(true)
                 .build();
         usuario = usuarioRepository.save(usuario);
