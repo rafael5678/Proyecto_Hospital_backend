@@ -84,8 +84,11 @@ public class ProfileService {
                 pacienteRepository.save(p);
             });
             case MEDICO -> medicoRepository.findByUsuario(usuario).ifPresent(m -> {
-                if (req.getEspecialidad() != null) m.setEspecialidad(req.getEspecialidad());
+                if (req.getEspecialidad() != null && !req.getEspecialidad().isBlank()) m.setEspecialidad(req.getEspecialidad());
                 if (req.getNumeroLicencia() != null) m.setNumeroLicencia(req.getNumeroLicencia());
+                if (req.getConsultorio() != null) m.setConsultorio(req.getConsultorio());
+                if (req.getAnosExperiencia() != null) m.setAnosExperiencia(req.getAnosExperiencia());
+                if (req.getBiografia() != null) m.setBiografia(req.getBiografia());
                 medicoRepository.save(m);
             });
             case ADMIN -> administradorRepository.findByUsuario(usuario).ifPresent(a -> {

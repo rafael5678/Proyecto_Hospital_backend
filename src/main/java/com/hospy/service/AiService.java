@@ -103,6 +103,27 @@ public class AiService {
         return "Hospy AI — modo demo local";
     }
 
+    /** Comprueba que Gemini responde. No inventa métricas ni guarda datos. */
+    public Map<String, String> probarConexion() {
+        Map<String, String> out = new LinkedHashMap<>();
+        out.put("modelo", hayGemini() ? geminiModel : versionIa());
+        if (!hayGemini()) {
+            out.put("operativo", "false");
+            out.put("detalle", "No hay clave de Gemini en el servidor.");
+            return out;
+        }
+        Optional<String> respuesta = llamarGemini(
+                "Responde únicamente con la palabra LISTO.",
+                "Confirma que el modelo está disponible.",
+                null, null, false, true);
+        boolean ok = respuesta.isPresent() && !respuesta.get().isBlank();
+        out.put("operativo", ok ? "true" : "false");
+        out.put("detalle", ok
+                ? "Gemini respondió con el modelo " + geminiModel + "."
+                : "La clave está guardada, pero Gemini no respondió. Puede estar en su límite de uso.");
+        return out;
+    }
+
     public String estadoTranscripcion() {
         if (hayGemini()) return "Operativo — Gemini Audio";
         if (hayOpenAi()) return "Operativo — Whisper";

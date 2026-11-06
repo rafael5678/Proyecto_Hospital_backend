@@ -52,6 +52,19 @@ public class AdminController {
         return ResponseEntity.ok(usuarioService.cambiarEstado(id, activo));
     }
 
+    @PatchMapping("/users/{id}/password")
+    public ResponseEntity<ApiMessage> restablecerClave(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, String> body,
+            org.springframework.security.core.Authentication authentication) {
+        usuarioService.restablecerClave(
+                id,
+                body.get("nuevaClave"),
+                body.get("claveAdmin"),
+                authentication.getName());
+        return ResponseEntity.ok(new ApiMessage("Clave restablecida"));
+    }
+
     @PostMapping("/doctors")
     public ResponseEntity<UserDto> crearMedico(@Valid @RequestBody UserRequest request) {
         request.setRol("MEDICO");
@@ -91,5 +104,10 @@ public class AdminController {
     public ResponseEntity<AiMetricsResponse> aiMetricas() {
         return ResponseEntity.ok(reporteService.generarMetricasIA(
                 aiService.hayApiKey(), aiService.versionIa(), aiService.estadoTranscripcion()));
+    }
+
+    @PostMapping("/ai-ping")
+    public ResponseEntity<java.util.Map<String, String>> probarIa() {
+        return ResponseEntity.ok(aiService.probarConexion());
     }
 }

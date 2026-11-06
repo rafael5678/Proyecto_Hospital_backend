@@ -84,14 +84,36 @@ public class UserService {
     public UserDto actualizar(Long id, UserRequest req) {
         User usuario = buscar(id);
         usuario.setNombre(req.getNombre());
-        usuario.setTelefono(req.getTelefono());
+        if (req.getTelefono() != null) usuario.setTelefono(req.getTelefono());
         if (req.getActivo() != null) usuario.setActivo(req.getActivo());
         if (req.getPassword() != null && !req.getPassword().isBlank()) {
-            usuario.setPassword(passwordEncoder.encode(req.getPassword()));
+            throw new RuntimeException("Para cambiar una clave confirma con tu contraseña de administrador en Accesos y claves.");
         }
         usuarioRepository.save(usuario);
         perfilService.actualizarPerfil(usuario, req);
         return toDtoByRol(usuario);
+    }
+
+    @Transactional
+    public void restablecerClave(Long id, String nuevaClave, String claveAdmin, String emailAdmin) {
+        if (claveAdmin == null || claveAdmin.isBlank()) {
+            throw new RuntimeException("Escribe tu contraseña de administrador para confirmar.");
+        }
+        User admin = usuarioRepository.findByEmail(emailAdmin)
+                .orElseThrow(() -> new RuntimeException("Administrador no encontrado"));
+        if (admin.getRol() != Role.ADMIN || !passwordEncoder.matches(claveAdmin, admin.getPassword())) {
+            throw new RuntimeException("La contraseña de administrador no coincide.");
+        }
+        User usuario = buscar(id);
+        if (usuario.getRol() == Role.ADMIN) {
+            throw new RuntimeException("La clave del administrador no se cambia desde esta pantalla.");
+        }
+        String clave = nuevaClave == null ? "" : nuevaClave.trim();
+        if (clave.length() < 6) {
+            throw new RuntimeException("La nueva clave debe tener al menos 6 caracteres.");
+        }
+        usuario.setPassword(passwordEncoder.encode(clave));
+        usuarioRepository.save(usuario);
     }
 
     public void eliminar(Long id) {

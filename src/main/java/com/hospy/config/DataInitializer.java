@@ -49,7 +49,6 @@ public class DataInitializer implements CommandLineRunner {
 
     private void asegurarPacienteDemo(String email, String nombre, String clave) {
         usuarioRepository.findByEmail(email).ifPresentOrElse(u -> {
-            u.setPassword(passwordEncoder.encode(clave));
             u.setRol(Role.PACIENTE);
             u.setActivo(true);
             u.setNombre(nombre);
@@ -101,10 +100,9 @@ public class DataInitializer implements CommandLineRunner {
         });
     }
 
-    /** Credenciales fijas de demo (se reactivan y restablecen al arrancar). */
+    /** El admin de demo se crea una vez. Si ya existe, no se le pisa la clave. */
     private void asegurarAdminDemo() {
         usuarioRepository.findByEmail("admin@hospy.com").ifPresentOrElse(u -> {
-            u.setPassword(passwordEncoder.encode("admin123"));
             u.setRol(Role.ADMIN);
             u.setActivo(true);
             usuarioRepository.save(u);
@@ -141,7 +139,6 @@ public class DataInitializer implements CommandLineRunner {
         req.setTelefono("3001112233");
 
         usuarioRepository.findByEmail("doctor@hospy.com").ifPresentOrElse(u -> {
-            u.setPassword(passwordEncoder.encode("Medico123"));
             u.setRol(Role.MEDICO);
             u.setActivo(true);
             u.setNombre(req.getNombre());
