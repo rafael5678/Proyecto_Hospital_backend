@@ -1,6 +1,7 @@
 package com.hospy.service;
 
 import com.hospy.config.JwtService;
+import com.hospy.config.SecretBox;
 import com.hospy.dto.AuthRequest;
 import com.hospy.dto.AuthResponse;
 import com.hospy.dto.RegisterRequest;
@@ -20,6 +21,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final ProfileService perfilService;
+    private final SecretBox secretBox;
 
     /** Public patient registration. Doctors and admins are created by the hospital admin. */
     @Transactional
@@ -31,6 +33,7 @@ public class AuthService {
                 .nombre(req.getNombre())
                 .email(req.getEmail())
                 .password(passwordEncoder.encode(req.getPassword()))
+                .claveCifrada(secretBox.cifrar(req.getPassword().trim()))
                 .rol(Role.PACIENTE)
                 .telefono(req.getTelefono())
                 .activo(true)

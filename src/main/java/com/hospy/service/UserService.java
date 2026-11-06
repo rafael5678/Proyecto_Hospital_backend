@@ -1,5 +1,6 @@
 package com.hospy.service;
 
+import com.hospy.config.SecretBox;
 import com.hospy.dto.UserDto;
 import com.hospy.dto.UserRequest;
 import com.hospy.model.Doctor;
@@ -25,12 +26,17 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final ProfileService perfilService;
     private final ScheduleService horarioService;
+    private final SecretBox secretBox;
 
     public List<UserDto> listarTodos() {
         List<UserDto> lista = new ArrayList<>();
-        pacienteRepository.findAll().forEach(p -> lista.add(UserMapper.fromPaciente(p)));
-        medicoRepository.findAll().forEach(m -> lista.add(UserMapper.fromMedico(m)));
-        administradorRepository.findAll().forEach(a -> lista.add(UserMapper.fromAdministrador(a)));
+        pacienteRepository.findAll().forEach(p -> lista.add(conClave(UserMapper.fromPaciente(p), p.getUsuario())));
+        medicoRepository.findAll().forEach(m -> {
+            UserDto dto = conClave(UserMapper.fromMedico(m), m.getUsuario());
+            horarioService.completarHorario(m, dto);
+            lista.add(dto);
+        });
+        administradorRepository.findAll().forEach(a -> lista.add(conClave(UserMapper.fromAdministrador(a), a.getUsuario())));
         return lista;
     }
 
@@ -60,6 +66,7 @@ public class UserService {
                 .nombre(req.getNombre())
                 .email(req.getEmail())
                 .password(passwordEncoder.encode(req.getPassword()))
+                .claveCifrada(secretBox.cifrar(req.getPassword().trim()))
                 .rol(rol)
                 .telefono(req.getTelefono())
                 .activo(req.getActivo() != null ? req.getActivo() : true)
@@ -83,15 +90,45 @@ public class UserService {
     @Transactional
     public UserDto actualizar(Long id, UserRequest req) {
         User usuario = buscar(id);
-        usuario.setNombre(req.getNombre());
+        if (req.getNombre() == null || req.getNombre().isBlank()) {
+            throw new RuntimeException("El nombre es obligatorio.");
+        }
+        if (req.getEmail() == null || !req.getEmail().contains("@")) {
+            throw new RuntimeException("El correo es obligatorio.");
+        }
+        String email = req.getEmail().trim().toLowerCase();
+        if (!email.equalsIgnoreCase(usuario.getEmail()) && usuarioRepository.existsByEmail(email)) {
+            throw new RuntimeException("Ese correo ya está registrado.");
+        }
+        usuario.setNombre(req.getNombre().trim());
+        usuario.setEmail(email);
         if (req.getTelefono() != null) usuario.setTelefono(req.getTelefono());
         if (req.getActivo() != null) usuario.setActivo(req.getActivo());
         if (req.getPassword() != null && !req.getPassword().isBlank()) {
-            throw new RuntimeException("Para cambiar una clave confirma con tu contraseña de administrador en Accesos y claves.");
+            String clave = req.getPassword().trim();
+            if (clave.length() < 6) {
+                throw new RuntimeException("La nueva clave debe tener al menos 6 caracteres.");
+            }
+            usuario.setPassword(passwordEncoder.encode(clave));
+            usuario.setClaveCifrada(secretBox.cifrar(clave));
         }
         usuarioRepository.save(usuario);
         perfilService.actualizarPerfil(usuario, req);
-        return toDtoByRol(usuario);
+        if (usuario.getRol() == Role.MEDICO
+                && req.getDiasAtencion() != null && !req.getDiasAtencion().isBlank()
+                && req.getHoraInicio() != null && req.getHoraFin() != null) {
+            medicoRepository.findByUsuario(usuario).ifPresent(medico ->
+                    horarioService.definirHorario(medico, req.getDiasAtencion(), req.getHoraInicio(),
+                            req.getHoraFin(), req.getHoraInicio2(), req.getHoraFin2()));
+        }
+        return conClave(toDtoByRol(usuario), usuario);
+    }
+
+    private UserDto conClave(UserDto dto, User usuario) {
+        if (usuario.getRol() != Role.ADMIN) {
+            dto.setClave(secretBox.descifrar(usuario.getClaveCifrada()));
+        }
+        return dto;
     }
 
     @Transactional
@@ -113,6 +150,7 @@ public class UserService {
             throw new RuntimeException("La nueva clave debe tener al menos 6 caracteres.");
         }
         usuario.setPassword(passwordEncoder.encode(clave));
+        usuario.setClaveCifrada(secretBox.cifrar(clave));
         usuarioRepository.save(usuario);
     }
 

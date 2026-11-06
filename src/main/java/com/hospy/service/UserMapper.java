@@ -25,6 +25,15 @@ public final class UserMapper {
         dto.setUsuarioId(p.getUsuario().getId());
         dto.setDocumento(p.getDocumento());
         dto.setTelefono(p.getUsuario().getTelefono());
+        if (p.getFechaNacimiento() != null) dto.setFechaNacimiento(p.getFechaNacimiento().toString());
+        dto.setGenero(p.getGenero());
+        dto.setTipoSangre(p.getTipoSangre());
+        dto.setDireccion(p.getDireccion());
+        dto.setCiudad(p.getCiudad());
+        dto.setAlergias(p.getAlergias());
+        dto.setContactoEmergencia(p.getContactoEmergencia());
+        dto.setTelefonoEmergencia(p.getTelefonoEmergencia());
+        dto.setObservaciones(p.getObservaciones());
         return dto;
     }
 
@@ -33,6 +42,7 @@ public final class UserMapper {
         dto.setId(m.getId());
         dto.setUsuarioId(m.getUsuario().getId());
         dto.setEspecialidad(m.getEspecialidad());
+        dto.setNumeroLicencia(m.getNumeroLicencia());
         dto.setConsultorio(m.getConsultorio());
         dto.setAnosExperiencia(m.getAnosExperiencia());
         dto.setBiografia(m.getBiografia());

@@ -27,6 +27,11 @@ public class User {
     @Column(nullable = false)
     private String password;
 
+    /** Copia cifrada para el módulo de administrador. No sale en el login. */
+    @JsonIgnore
+    @Column(length = 500)
+    private String claveCifrada;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role rol;

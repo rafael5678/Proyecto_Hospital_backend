@@ -20,6 +20,33 @@ public class ScheduleService {
     private final ScheduleRepository horarioRepository;
     private final DoctorRepository medicoRepository;
 
+    public void completarHorario(Doctor medico, com.hospy.dto.UserDto dto) {
+        List<Schedule> bloques = horarioRepository.findByMedico(medico).stream()
+                .filter(h -> !Boolean.FALSE.equals(h.getDisponible()))
+                .toList();
+        if (bloques.isEmpty()) return;
+        String dias = bloques.stream().map(Schedule::getDiaSemana).distinct().sorted()
+                .map(String::valueOf).reduce((a, b) -> a + "," + b).orElse("");
+        dto.setDiasAtencion(dias);
+        List<String> franjas = bloques.stream()
+                .map(h -> horaCorta(h.getHoraInicio()) + "|" + horaCorta(h.getHoraFin()))
+                .distinct().toList();
+        if (!franjas.isEmpty()) {
+            String[] p = franjas.get(0).split("\\|");
+            dto.setHoraInicio(p[0]);
+            dto.setHoraFin(p[1]);
+        }
+        if (franjas.size() > 1) {
+            String[] p = franjas.get(1).split("\\|");
+            dto.setHoraInicio2(p[0]);
+            dto.setHoraFin2(p[1]);
+        }
+    }
+
+    private static String horaCorta(LocalTime hora) {
+        return hora == null ? "" : hora.toString().substring(0, 5);
+    }
+
     public List<ScheduleResponse> listarPorMedico(Long medicoId) {
         Doctor medico = medicoRepository.findById(medicoId)
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
