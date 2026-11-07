@@ -350,7 +350,9 @@ public class AppointmentService {
     public List<AppointmentResponse> historialPacienteDeCita(Long citaId, String emailMedico) {
         Appointment cita = buscar(citaId);
         validarMedico(cita, emailMedico);
+        Long medicoId = cita.getMedico().getId();
         return citaRepository.findByPacienteOrderByFechaHoraDesc(cita.getPaciente()).stream()
+                .filter(anterior -> anterior.getMedico() != null && medicoId.equals(anterior.getMedico().getId()))
                 .filter(anterior -> !anterior.getId().equals(citaId))
                 .map(AppointmentMapper::toDto)
                 .toList();

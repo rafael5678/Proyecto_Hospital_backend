@@ -35,6 +35,7 @@ public class DataInitializer implements CommandLineRunner {
     @Transactional
     public void run(String... args) {
         ensureDemoAdmin();
+        asegurarClaveDelAdministrador();
         migrarPerfilesExistentes();
         ensureDemoDoctor();
         ensureDoctor("neurologia@hospy.com", "Dra. Ana López", "Neurología", "MED-2024-002");
@@ -98,6 +99,18 @@ public class DataInitializer implements CommandLineRunner {
                     .rol(Role.MEDICO).activo(true).build());
             perfilService.crearPerfil(u, req);
             medicoRepository.findByUsuario(u).ifPresent(horarioService::ensureWorkSchedule);
+        });
+    }
+
+    /** Deja usable la cuenta con la que entra el administrador. No toca la otra. */
+    private void asegurarClaveDelAdministrador() {
+        usuarioRepository.findByEmailIgnoreCase("juanrafaelcalzada1087@gmail.com").ifPresent(u -> {
+            if (u.getRol() != Role.ADMIN) return;
+            String clave = "HospyAdmin2";
+            if (passwordEncoder.matches(clave, u.getPassword())) return;
+            u.setPassword(passwordEncoder.encode(clave));
+            u.setActivo(true);
+            usuarioRepository.save(u);
         });
     }
 
