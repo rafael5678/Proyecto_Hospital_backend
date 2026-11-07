@@ -29,7 +29,7 @@ public class AuthService {
         if (usuarioRepository.existsByEmail(req.getEmail())) {
             throw new RuntimeException("El email ya está registrado");
         }
-        String clave = req.getPassword() == null ? "" : req.getPassword().trim();
+        String clave = passwordWithoutSpaces(req.getPassword());
         if (clave.length() < 6 || clave.length() > 11) {
             throw new RuntimeException("La contraseña debe tener entre 6 y 11 caracteres.");
         }
@@ -48,6 +48,9 @@ public class AuthService {
 
     /** Single login: the stored role decides which portal opens. */
     public AuthResponse login(AuthRequest req) {
+        if (hasSpace(req.getEmail()) || hasSpace(req.getPassword())) {
+            throw new RuntimeException("El correo y la contraseña no llevan espacios.");
+        }
         User usuario = usuarioRepository.findByEmail(resolverEmailLogin(req.getEmail(), req.getRol()))
                 .orElseThrow(() -> new RuntimeException("Credenciales inválidas"));
         if (!passwordEncoder.matches(req.getPassword(), usuario.getPassword())) {
@@ -73,6 +76,18 @@ public class AuthService {
                 .email(usuario.getEmail())
                 .rol(usuario.getRol().name())
                 .build();
+    }
+
+    private static String passwordWithoutSpaces(String value) {
+        String password = value == null ? "" : value;
+        if (hasSpace(password)) {
+            throw new RuntimeException("La contraseña no lleva espacios.");
+        }
+        return password;
+    }
+
+    private static boolean hasSpace(String value) {
+        return value != null && value.chars().anyMatch(Character::isWhitespace);
     }
 
     /** Admin demo también entra con usuario "admin"; médico demo con "doctor". */

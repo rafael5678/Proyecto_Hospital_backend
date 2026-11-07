@@ -122,7 +122,10 @@ public class UserService {
     }
 
     private String exigirClave(String valor) {
-        String clave = valor == null ? "" : valor.trim();
+        String clave = valor == null ? "" : valor;
+        if (clave.chars().anyMatch(Character::isWhitespace)) {
+            throw new RuntimeException("La contraseña no lleva espacios.");
+        }
         if (clave.length() < 6 || clave.length() > 11) {
             throw new RuntimeException("La clave debe tener entre 6 y 11 caracteres.");
         }
