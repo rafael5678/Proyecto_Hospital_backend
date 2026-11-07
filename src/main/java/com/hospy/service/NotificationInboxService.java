@@ -10,6 +10,8 @@ import com.hospy.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -40,7 +42,20 @@ public class NotificationInboxService {
                 .leida(false)
                 .creadaEn(LocalDateTime.now())
                 .build());
-        liveEvents.notifyUser(usuario.getEmail());
+        pingAfterCommit(usuario.getEmail());
+    }
+
+    private void pingAfterCommit(String email) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            liveEvents.notifyUser(email);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                liveEvents.notifyUser(email);
+            }
+        });
     }
 
     public List<NotificationResponse> listar(String email) {
