@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -55,7 +54,7 @@ public class PatientService {
         long aceptadas = citas.stream().filter(c -> c.getEstado() == AppointmentStatus.ACEPTADA).count();
         long canceladas = citas.stream().filter(c -> c.getEstado() == AppointmentStatus.CANCELADA).count();
         long upcoming = citas.stream()
-                .filter(c -> c.getFechaHora().isAfter(LocalDateTime.now())
+                .filter(c -> c.getFechaHora().isAfter(ColombiaTime.now())
                         && (c.getEstado() == AppointmentStatus.PENDIENTE || c.getEstado() == AppointmentStatus.ACEPTADA))
                 .count();
         return PatientDashboardDto.builder()

@@ -10,7 +10,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -33,7 +32,7 @@ public class DoctorProfileService {
     public DoctorDashboardDto dashboard(String email) {
         Doctor m = findByEmail(email);
         List<Appointment> citas = citaRepository.findByMedicoOrderByFechaHoraAsc(m);
-        LocalDate hoy = LocalDate.now();
+        LocalDate hoy = ColombiaTime.today();
         long hoyCount = citas.stream()
                 .filter(c -> c.getFechaHora().toLocalDate().equals(hoy))
                 .count();
