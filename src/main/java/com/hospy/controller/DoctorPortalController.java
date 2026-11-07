@@ -25,42 +25,42 @@ public class DoctorPortalController {
 
     @GetMapping("/dashboard")
     public ResponseEntity<DoctorDashboardDto> dashboard() {
-        return ResponseEntity.ok(medicoPerfilService.dashboard(emailActual()));
+        return ResponseEntity.ok(medicoPerfilService.dashboard(currentEmail()));
     }
 
     @GetMapping("/profile")
-    public ResponseEntity<DoctorProfileDto> perfil() {
-        return ResponseEntity.ok(medicoPerfilService.obtenerPerfil(emailActual()));
+    public ResponseEntity<DoctorProfileDto> profile() {
+        return ResponseEntity.ok(medicoPerfilService.loadProfile(currentEmail()));
     }
 
     @GetMapping("/appointments")
-    public ResponseEntity<List<AppointmentResponse>> misCitas() {
-        return ResponseEntity.ok(citaService.citasMedico(emailActual()));
+    public ResponseEntity<List<AppointmentResponse>> ownAppointments() {
+        return ResponseEntity.ok(citaService.appointmentsForDoctor(currentEmail()));
     }
 
     @PatchMapping("/appointments/{id}/accept")
-    public ResponseEntity<AppointmentResponse> aceptar(@PathVariable Long id) {
-        return ResponseEntity.ok(citaService.aceptar(id, emailActual()));
+    public ResponseEntity<AppointmentResponse> accept(@PathVariable Long id) {
+        return ResponseEntity.ok(citaService.accept(id, currentEmail()));
     }
 
     @PatchMapping("/appointments/{id}/reject")
-    public ResponseEntity<AppointmentResponse> rechazar(@PathVariable Long id) {
-        return ResponseEntity.ok(citaService.rechazar(id, emailActual()));
+    public ResponseEntity<AppointmentResponse> reject(@PathVariable Long id) {
+        return ResponseEntity.ok(citaService.reject(id, currentEmail()));
     }
 
     @GetMapping("/appointments/{id}/patient")
-    public ResponseEntity<PatientProfileDto> verPaciente(@PathVariable Long id) {
-        return ResponseEntity.ok(citaService.pacienteDeCita(id, emailActual()));
+    public ResponseEntity<PatientProfileDto> viewPatient(@PathVariable Long id) {
+        return ResponseEntity.ok(citaService.patientForAppointment(id, currentEmail()));
     }
 
     @GetMapping("/appointments/{id}/patient-history")
-    public ResponseEntity<List<AppointmentResponse>> historialPaciente(@PathVariable Long id) {
-        return ResponseEntity.ok(citaService.historialPacienteDeCita(id, emailActual()));
+    public ResponseEntity<List<AppointmentResponse>> patientHistory(@PathVariable Long id) {
+        return ResponseEntity.ok(citaService.historyForDoctorVisit(id, currentEmail()));
     }
 
     @PostMapping("/appointments/{id}/indicacion")
     public ResponseEntity<ApiMessage> sendPrescription(@PathVariable Long id, @RequestBody PrescriptionRequest req) {
-        boolean correo = citaService.sendPrescription(id, emailActual(), req);
+        boolean correo = citaService.sendPrescription(id, currentEmail(), req);
         String aviso = correo
                 ? "Consulta concluida. Le llegó a la campana y al correo. El administrador también la ve."
                 : "Consulta concluida. Le llegó a la campana. El correo no salió; el administrador la ve en Citas.";
@@ -68,28 +68,28 @@ public class DoctorPortalController {
     }
 
     @GetMapping("/schedules")
-    public ResponseEntity<List<ScheduleResponse>> misHorarios() {
-        return ResponseEntity.ok(horarioService.misHorarios(emailActual()));
+    public ResponseEntity<List<ScheduleResponse>> ownSchedules() {
+        return ResponseEntity.ok(horarioService.ownSchedules(currentEmail()));
     }
 
     @PostMapping("/schedules")
-    public ResponseEntity<ScheduleResponse> crearHorario(@Valid @RequestBody ScheduleRequest request) {
-        return ResponseEntity.ok(horarioService.crear(emailActual(), request));
+    public ResponseEntity<ScheduleResponse> createSchedule(@Valid @RequestBody ScheduleRequest request) {
+        return ResponseEntity.ok(horarioService.create(currentEmail(), request));
     }
 
     @PutMapping("/schedules/{id}")
-    public ResponseEntity<ScheduleResponse> actualizarHorario(
+    public ResponseEntity<ScheduleResponse> updateSchedule(
             @PathVariable Long id, @Valid @RequestBody ScheduleRequest request) {
-        return ResponseEntity.ok(horarioService.actualizar(id, emailActual(), request));
+        return ResponseEntity.ok(horarioService.update(id, currentEmail(), request));
     }
 
     @DeleteMapping("/schedules/{id}")
-    public ResponseEntity<ApiMessage> eliminarHorario(@PathVariable Long id) {
-        horarioService.eliminar(id, emailActual());
+    public ResponseEntity<ApiMessage> deleteSchedule(@PathVariable Long id) {
+        horarioService.remove(id, currentEmail());
         return ResponseEntity.ok(new ApiMessage("Schedule eliminado"));
     }
 
-    private String emailActual() {
+    private String currentEmail() {
         return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 }

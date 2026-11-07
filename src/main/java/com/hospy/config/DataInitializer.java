@@ -35,8 +35,8 @@ public class DataInitializer implements CommandLineRunner {
     @Transactional
     public void run(String... args) {
         ensureDemoAdmin();
-        asegurarClaveDelAdministrador();
-        migrarPerfilesExistentes();
+        ensureListedAdminPassword();
+        migrateExistingProfiles();
         ensureDemoDoctor();
         ensureDoctor("neurologia@hospy.com", "Dra. Ana López", "Neurología", "MED-2024-002");
         ensureDoctor("dermatologia@hospy.com", "Dr. Carlos Pérez", "Dermatología", "MED-2024-003");
@@ -58,7 +58,7 @@ public class DataInitializer implements CommandLineRunner {
             if (pacienteRepository.findByUsuario(u).isEmpty()) {
                 RegisterRequest r = new RegisterRequest();
                 r.setDocumento("CC-DEMO");
-                perfilService.crearPaciente(u, r);
+                perfilService.createPatient(u, r);
             }
         }, () -> {
             User u = usuarioRepository.save(User.builder()
@@ -67,7 +67,7 @@ public class DataInitializer implements CommandLineRunner {
                     .rol(Role.PACIENTE).activo(true).build());
             RegisterRequest r = new RegisterRequest();
             r.setDocumento("CC-DEMO");
-            perfilService.crearPaciente(u, r);
+            perfilService.createPatient(u, r);
         });
     }
 
@@ -89,7 +89,7 @@ public class DataInitializer implements CommandLineRunner {
                 medicoRepository.save(m);
                 horarioService.ensureWorkSchedule(m);
             }, () -> {
-                perfilService.crearPerfil(u, req);
+                perfilService.createProfile(u, req);
                 medicoRepository.findByUsuario(u).ifPresent(horarioService::ensureWorkSchedule);
             });
         }, () -> {
@@ -97,13 +97,13 @@ public class DataInitializer implements CommandLineRunner {
                     .nombre(nombre).email(email)
                     .password(passwordEncoder.encode("Medico123"))
                     .rol(Role.MEDICO).activo(true).build());
-            perfilService.crearPerfil(u, req);
+            perfilService.createProfile(u, req);
             medicoRepository.findByUsuario(u).ifPresent(horarioService::ensureWorkSchedule);
         });
     }
 
     /** Deja usable la cuenta con la que entra el administrador. No toca la otra. */
-    private void asegurarClaveDelAdministrador() {
+    private void ensureListedAdminPassword() {
         usuarioRepository.findByEmailIgnoreCase("juanrafaelcalzada1087@gmail.com").ifPresent(u -> {
             if (u.getRol() != Role.ADMIN) return;
             String clave = "HospyAdmin2";
@@ -159,19 +159,19 @@ public class DataInitializer implements CommandLineRunner {
             u.setTelefono(req.getTelefono());
             usuarioRepository.save(u);
             if (medicoRepository.findByUsuario(u).isEmpty()) {
-                perfilService.crearPerfil(u, req);
+                perfilService.createProfile(u, req);
             }
         }, () -> {
             User u = usuarioRepository.save(User.builder()
                     .nombre(req.getNombre()).email(req.getEmail())
                     .password(passwordEncoder.encode(req.getPassword()))
                     .rol(Role.MEDICO).telefono(req.getTelefono()).activo(true).build());
-            perfilService.crearPerfil(u, req);
+            perfilService.createProfile(u, req);
         });
     }
 
     /** Migra usuarios viejos que no tenían tabla de perfil */
-    private void migrarPerfilesExistentes() {
+    private void migrateExistingProfiles() {
         usuarioRepository.findAll().forEach(u -> {
             UserRequest req = new UserRequest();
             req.setDocumento(null);
@@ -182,17 +182,17 @@ public class DataInitializer implements CommandLineRunner {
                     if (pacienteRepository.findByUsuario(u).isEmpty()) {
                         RegisterRequest r = new RegisterRequest();
                         r.setDocumento("Migrado");
-                        perfilService.crearPaciente(u, r);
+                        perfilService.createPatient(u, r);
                     }
                 }
                 case MEDICO -> {
                     if (medicoRepository.findByUsuario(u).isEmpty()) {
-                        perfilService.crearPerfil(u, req);
+                        perfilService.createProfile(u, req);
                     }
                 }
                 case ADMIN -> {
                     if (administradorRepository.findByUsuario(u).isEmpty()) {
-                        perfilService.crearPerfil(u, req);
+                        perfilService.createProfile(u, req);
                     }
                 }
             }

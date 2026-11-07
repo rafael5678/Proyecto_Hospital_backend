@@ -20,7 +20,7 @@ public class ScheduleService {
     private final ScheduleRepository horarioRepository;
     private final DoctorRepository medicoRepository;
 
-    public void completarHorario(Doctor medico, com.hospy.dto.UserDto dto) {
+    public void fillSchedule(Doctor medico, com.hospy.dto.UserDto dto) {
         List<Schedule> bloques = horarioRepository.findByMedico(medico).stream()
                 .filter(h -> !Boolean.FALSE.equals(h.getDisponible()))
                 .toList();
@@ -29,7 +29,7 @@ public class ScheduleService {
                 .map(String::valueOf).reduce((a, b) -> a + "," + b).orElse("");
         dto.setDiasAtencion(dias);
         List<String> franjas = bloques.stream()
-                .map(h -> horaCorta(h.getHoraInicio()) + "|" + horaCorta(h.getHoraFin()))
+                .map(h -> shortTime(h.getHoraInicio()) + "|" + shortTime(h.getHoraFin()))
                 .distinct().toList();
         if (!franjas.isEmpty()) {
             String[] p = franjas.get(0).split("\\|");
@@ -43,11 +43,11 @@ public class ScheduleService {
         }
     }
 
-    private static String horaCorta(LocalTime hora) {
+    private static String shortTime(LocalTime hora) {
         return hora == null ? "" : hora.toString().substring(0, 5);
     }
 
-    public List<ScheduleResponse> listarPorMedico(Long medicoId) {
+    public List<ScheduleResponse> listByDoctor(Long medicoId) {
         Doctor medico = medicoRepository.findById(medicoId)
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
         ensureWorkSchedule(medico);
@@ -55,13 +55,13 @@ public class ScheduleService {
                 .stream().map(this::toDto).toList();
     }
 
-    public List<ScheduleResponse> misHorarios(String email) {
+    public List<ScheduleResponse> ownSchedules(String email) {
         Doctor medico = medicoRepository.findByUsuario_Email(email)
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
         return horarioRepository.findByMedico(medico).stream().map(this::toDto).toList();
     }
 
-    public ScheduleResponse crear(String emailMedico, ScheduleRequest req) {
+    public ScheduleResponse create(String emailMedico, ScheduleRequest req) {
         Doctor medico = medicoRepository.findByUsuario_Email(emailMedico)
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
         Schedule horario = Schedule.builder()
@@ -74,7 +74,7 @@ public class ScheduleService {
         return toDto(horarioRepository.save(horario));
     }
 
-    public ScheduleResponse actualizar(Long id, String emailMedico, ScheduleRequest req) {
+    public ScheduleResponse update(Long id, String emailMedico, ScheduleRequest req) {
         Schedule horario = horarioRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Schedule no encontrado"));
         if (!horario.getMedico().getUsuario().getEmail().equals(emailMedico)) {
@@ -87,7 +87,7 @@ public class ScheduleService {
         return toDto(horarioRepository.save(horario));
     }
 
-    public void eliminar(Long id, String emailMedico) {
+    public void remove(Long id, String emailMedico) {
         Schedule horario = horarioRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Schedule no encontrado"));
         if (!horario.getMedico().getUsuario().getEmail().equals(emailMedico)) {
@@ -97,15 +97,15 @@ public class ScheduleService {
     }
 
     @Transactional
-    public void definirHorario(Doctor medico, String dias, String inicio, String fin, String inicio2, String fin2) {
+    public void defineSchedule(Doctor medico, String dias, String inicio, String fin, String inicio2, String fin2) {
         if (medico == null) return;
-        LocalTime h1 = parseHora(inicio);
-        LocalTime h2 = parseHora(fin);
+        LocalTime h1 = parseTime(inicio);
+        LocalTime h2 = parseTime(fin);
         if (h1 == null || h2 == null || !h2.isAfter(h1)) {
             throw new RuntimeException("El horario necesita una hora de inicio y una hora de fin.");
         }
-        LocalTime t1 = parseHora(inicio2);
-        LocalTime t2 = parseHora(fin2);
+        LocalTime t1 = parseTime(inicio2);
+        LocalTime t2 = parseTime(fin2);
         boolean segunda = t1 != null || t2 != null;
         if (segunda && (t1 == null || t2 == null || !t2.isAfter(t1))) {
             throw new RuntimeException("La segunda jornada necesita hora de inicio y hora de fin.");
@@ -122,18 +122,18 @@ public class ScheduleService {
         if (lista.isEmpty()) throw new RuntimeException("Indica los días de atención del médico.");
         horarioRepository.deleteByMedico(medico);
         for (int dia : lista) {
-            horarioRepository.save(bloque(medico, dia, h1, h2));
-            if (segunda) horarioRepository.save(bloque(medico, dia, t1, t2));
+            horarioRepository.save(workBlock(medico, dia, h1, h2));
+            if (segunda) horarioRepository.save(workBlock(medico, dia, t1, t2));
         }
     }
 
-    private Schedule bloque(Doctor medico, int dia, LocalTime inicio, LocalTime fin) {
+    private Schedule workBlock(Doctor medico, int dia, LocalTime inicio, LocalTime fin) {
         return Schedule.builder()
                 .medico(medico).diaSemana(dia)
                 .horaInicio(inicio).horaFin(fin).disponible(true).build();
     }
 
-    private LocalTime parseHora(String valor) {
+    private LocalTime parseTime(String valor) {
         if (valor == null || valor.isBlank()) return null;
         String texto = valor.trim();
         if (texto.matches("\\d{1,2}")) texto = texto + ":00";
@@ -166,14 +166,14 @@ public class ScheduleService {
                 .id(h.getId())
                 .medicoId(h.getMedico().getId())
                 .diaSemana(h.getDiaSemana())
-                .diaNombre(nombreDia(h.getDiaSemana()))
+                .diaNombre(dayName(h.getDiaSemana()))
                 .horaInicio(h.getHoraInicio())
                 .horaFin(h.getHoraFin())
                 .disponible(h.getDisponible())
                 .build();
     }
 
-    public static String nombreDia(Integer dia) {
+    public static String dayName(Integer dia) {
         if (dia == null) return "";
         return switch (dia) {
             case 1 -> "Lunes";

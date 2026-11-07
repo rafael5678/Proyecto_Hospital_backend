@@ -48,9 +48,9 @@ public class AppointmentNotificationService {
                 " cambió de " + FORMATO.format(fechaAnterior) + " a " + FORMATO.format(cita.getFechaHora()) +
                 ".\nMotivo administrativo: " + motivo;
 
-        inbox.crearParaEmail(cita.getPaciente().getUsuario().getEmail(), asunto, textoPaciente,
+        inbox.createForEmail(cita.getPaciente().getUsuario().getEmail(), asunto, textoPaciente,
                 "CITA_CAMBIO", cita.getId());
-        inbox.crearParaEmail(cita.getMedico().getUsuario().getEmail(), "Cambio en una cita", textoMedico,
+        inbox.createForEmail(cita.getMedico().getUsuario().getEmail(), "Cambio en una cita", textoMedico,
                 "CITA_CAMBIO", cita.getId());
         boolean paciente = enviar(cita.getPaciente().getUsuario().getEmail(), asunto, textoPaciente);
         boolean medico = enviar(cita.getMedico().getUsuario().getEmail(), asunto, textoMedico);
@@ -72,7 +72,7 @@ public class AppointmentNotificationService {
                 "\nSíntomas: " + nvl(cita.getTriageSintomas()) +
                 "\n" + triage + piel +
                 "\n\nRevisa ficha, historial y SOAP en el portal. Este resumen no sustituye tu criterio clínico.";
-        inbox.crearParaEmail(cita.getMedico().getUsuario().getEmail(), asunto, contenido,
+        inbox.createForEmail(cita.getMedico().getUsuario().getEmail(), asunto, contenido,
                 "CITA_NUEVA", cita.getId());
         return enviar(cita.getMedico().getUsuario().getEmail(), asunto, contenido);
     }
@@ -83,7 +83,7 @@ public class AppointmentNotificationService {
                 cita.getMedico().getUsuario().getNombre() + " aceptó tu cita del " +
                 FORMATO.format(cita.getFechaHora()) + " (" + cita.getMedico().getEspecialidad() + ").\n\n" +
                 "Revisa el detalle en tu portal Hospy.\n\n— Equipo Hospy";
-        inbox.crearParaEmail(cita.getPaciente().getUsuario().getEmail(), asunto, texto,
+        inbox.createForEmail(cita.getPaciente().getUsuario().getEmail(), asunto, texto,
                 "CITA_ACEPTADA", cita.getId());
         return enviar(cita.getPaciente().getUsuario().getEmail(), asunto, texto);
     }
@@ -93,7 +93,7 @@ public class AppointmentNotificationService {
         String texto = "Hola " + cita.getPaciente().getUsuario().getNombre() + ",\n\n" +
                 "La cita del " + FORMATO.format(cita.getFechaHora()) + " con " +
                 cita.getMedico().getUsuario().getNombre() + " fue rechazada. Agenda otro cupo en el portal.\n\n— Equipo Hospy";
-        inbox.crearParaEmail(cita.getPaciente().getUsuario().getEmail(), asunto, texto,
+        inbox.createForEmail(cita.getPaciente().getUsuario().getEmail(), asunto, texto,
                 "CITA_RECHAZADA", cita.getId());
         return enviar(cita.getPaciente().getUsuario().getEmail(), asunto, texto);
     }
@@ -110,13 +110,13 @@ public class AppointmentNotificationService {
                 : "Tu consulta quedó aceptada y concluida.\n\n";
         String paciente = "Hola " + nombre + ",\n\n" + cuando + texto
                 + "\n\nSi algo empeora, vuelve a consultar.\n\n— Equipo Hospy";
-        inbox.crearParaEmail(email, "Consulta concluida", paciente, "CONSULTA_CONCLUIDA", cita.getId());
-        inbox.crear(cita.getMedico().getUsuario(), "Consulta concluida",
+        inbox.createForEmail(email, "Consulta concluida", paciente, "CONSULTA_CONCLUIDA", cita.getId());
+        inbox.create(cita.getMedico().getUsuario(), "Consulta concluida",
                 "Concluiste la consulta de " + nombre + ".\n\n" + texto,
                 "CONSULTA_CONCLUIDA", cita.getId());
         String admin = medico + " concluyó la consulta de " + nombre + ".\n\n" + texto;
         usuarioRepository.findByRolAndActivoTrue(Role.ADMIN).forEach(u ->
-                inbox.crear(u, "Consulta concluida", admin, "CONSULTA_CONCLUIDA", cita.getId()));
+                inbox.create(u, "Consulta concluida", admin, "CONSULTA_CONCLUIDA", cita.getId()));
         return enviar(email, "Consulta concluida", paciente);
     }
 
@@ -130,9 +130,9 @@ public class AppointmentNotificationService {
         String textoPaciente = "Hola " + cita.getPaciente().getUsuario().getNombre() + ",\n\n" +
                 "Confirmamos la cancelación de tu cita del " + FORMATO.format(cita.getFechaHora()) +
                 " con " + cita.getMedico().getUsuario().getNombre() + ".\n\n— Equipo Hospy";
-        inbox.crearParaEmail(cita.getMedico().getUsuario().getEmail(), asuntoMedico, textoMedico,
+        inbox.createForEmail(cita.getMedico().getUsuario().getEmail(), asuntoMedico, textoMedico,
                 "CITA_CANCELADA", cita.getId());
-        inbox.crearParaEmail(cita.getPaciente().getUsuario().getEmail(), asuntoPaciente, textoPaciente,
+        inbox.createForEmail(cita.getPaciente().getUsuario().getEmail(), asuntoPaciente, textoPaciente,
                 "CITA_CANCELADA", cita.getId());
         enviar(cita.getPaciente().getUsuario().getEmail(), asuntoPaciente, textoPaciente);
         return enviar(cita.getMedico().getUsuario().getEmail(), asuntoMedico, textoMedico);
@@ -154,7 +154,7 @@ public class AppointmentNotificationService {
                 "Revisa el detalle en tu portal Hospy. Si necesitas otra fecha, agenda de nuevo o contacta al centro.\n\n" +
                 "— Equipo Hospy";
 
-        inbox.crearParaEmail(citaDesplazada.getPaciente().getUsuario().getEmail(),
+        inbox.createForEmail(citaDesplazada.getPaciente().getUsuario().getEmail(),
                 "Tu cita fue reprogramada", textoPaciente, "CITA_REPROGRAMADA", citaDesplazada.getId());
         boolean paciente = enviar(citaDesplazada.getPaciente().getUsuario().getEmail(), asuntoPaciente, textoPaciente);
         return new NotificationResult(paciente, false);

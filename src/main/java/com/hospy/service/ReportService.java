@@ -30,9 +30,9 @@ public class ReportService {
     private final DoctorRepository medicoRepository;
     private final AppointmentChangeRepository cambioCitaRepository;
 
-    public ReportResponse generarReporte(int anio) {
+    public ReportResponse buildReport(int anio) {
         List<Map<String, Object>> desglose = new ArrayList<>();
-        agregarMesRecursivo(anio, 1, desglose);
+        addMonth(anio, 1, desglose);
         return ReportResponse.builder()
                 .totalCitas(citaRepository.count())
                 .citasPendientes(citaRepository.countByEstado(AppointmentStatus.PENDIENTE))
@@ -44,11 +44,11 @@ public class ReportService {
                 .build();
     }
 
-    public AiMetricsResponse generarMetricasIA(boolean apiKeyActiva, String versionIa, String estadoTranscripcion) {
+    public AiMetricsResponse buildAiMetrics(boolean apiKeyActiva, String versionIa, String transcriptionStatus) {
         long totalCitas = citaRepository.count();
-        long citasConTriage = citaRepository.countConTriage();
-        long citasConPiel = citaRepository.countConEvaluacionPiel();
-        long prioridadAlta = citaRepository.countPrioridadAlta();
+        long citasConTriage = citaRepository.countWithTriage();
+        long citasConPiel = citaRepository.countWithSkinReview();
+        long prioridadAlta = citaRepository.countHighPriority();
         long reprogramadasIA = cambioCitaRepository.countByRealizadoPor("SISTEMA_IA");
 
         /* Distribución de severidad */
@@ -73,7 +73,7 @@ public class ReportService {
                 .distribucionSeveridad(distribucion)
                 .apiKeyActiva(apiKeyActiva)
                 .versionIa(versionIa)
-                .estadoWhisper(estadoTranscripcion)
+                .estadoWhisper(transcriptionStatus)
                 .estadoSoap(apiKeyActiva ? "Operativo — Gemini/LLM genera borrador SOAP" : "Demo — plantilla local")
                 .estadoTriage(apiKeyActiva ? "Operativo — análisis Gemini/NLP" : "Demo — reglas de palabra clave")
                 .estadoDermatologia(apiKeyActiva ? "Operativo — Gemini visión + clasificador local" : "Demo — clasificación por texto")
@@ -84,7 +84,7 @@ public class ReportService {
                 .build();
     }
 
-    private void agregarMesRecursivo(int anio, int mes, List<Map<String, Object>> acumulado) {
+    private void addMonth(int anio, int mes, List<Map<String, Object>> acumulado) {
         if (mes > 12) return;
         YearMonth ym = YearMonth.of(anio, mes);
         LocalDateTime inicio = ym.atDay(1).atStartOfDay();
@@ -92,13 +92,13 @@ public class ReportService {
         long total = citaRepository.countByFechaHoraBetween(inicio, fin);
         Map<String, Object> dato = new HashMap<>();
         dato.put("mes", mes);
-        dato.put("nombreMes", obtenerNombreMes(mes));
+        dato.put("nombreMes", monthName(mes));
         dato.put("totalCitas", total);
         acumulado.add(dato);
-        agregarMesRecursivo(anio, mes + 1, acumulado);
+        addMonth(anio, mes + 1, acumulado);
     }
 
-    private String obtenerNombreMes(int mes) {
+    private String monthName(int mes) {
         String[] nombres = {"", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
                 "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"};
         return nombres[mes];

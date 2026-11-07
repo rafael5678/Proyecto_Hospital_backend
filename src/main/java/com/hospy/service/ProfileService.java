@@ -21,12 +21,12 @@ public class ProfileService {
     private final AdministratorRepository administradorRepository;
 
     @Transactional
-    public void crearPerfil(User usuario, UserRequest req) {
+    public void createProfile(User usuario, UserRequest req) {
         switch (usuario.getRol()) {
             case PACIENTE -> pacienteRepository.save(Patient.builder()
                     .usuario(usuario)
                     .documento(ColombianId.normalize(req.getDocumento()))
-                    .fechaNacimiento(parseFecha(req.getFechaNacimiento()))
+                    .fechaNacimiento(parseDate(req.getFechaNacimiento()))
                     .genero(req.getGenero())
                     .tipoSangre(req.getTipoSangre())
                     .direccion(req.getDireccion())
@@ -48,7 +48,7 @@ public class ProfileService {
         }
     }
 
-    private static LocalDate parseFecha(String valor) {
+    private static LocalDate parseDate(String valor) {
         if (valor == null || valor.isBlank()) return null;
         try {
             return LocalDate.parse(valor);
@@ -58,7 +58,7 @@ public class ProfileService {
     }
 
     @Transactional
-    public void crearPaciente(User usuario, RegisterRequest req) {
+    public void createPatient(User usuario, RegisterRequest req) {
         if (pacienteRepository.findByUsuario(usuario).isEmpty()) {
             pacienteRepository.save(Patient.builder()
                     .usuario(usuario)
@@ -77,13 +77,13 @@ public class ProfileService {
     }
 
     @Transactional
-    public void actualizarPerfil(User usuario, UserRequest req) {
+    public void updateProfile(User usuario, UserRequest req) {
         switch (usuario.getRol()) {
             case PACIENTE -> {
                 var p = pacienteRepository.findByUsuarioId(usuario.getId())
                         .orElseGet(() -> Patient.builder().usuario(usuario).build());
                 if (req.getDocumento() != null) p.setDocumento(ColombianId.normalize(req.getDocumento()));
-                if (req.getFechaNacimiento() != null) p.setFechaNacimiento(parseFecha(req.getFechaNacimiento()));
+                if (req.getFechaNacimiento() != null) p.setFechaNacimiento(parseDate(req.getFechaNacimiento()));
                 if (req.getGenero() != null) p.setGenero(req.getGenero());
                 if (req.getTipoSangre() != null) p.setTipoSangre(req.getTipoSangre());
                 if (req.getDireccion() != null) p.setDireccion(req.getDireccion());

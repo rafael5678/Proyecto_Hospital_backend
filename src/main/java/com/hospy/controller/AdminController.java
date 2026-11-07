@@ -25,39 +25,39 @@ public class AdminController {
     private final AiService aiService;
 
     @GetMapping("/users")
-    public ResponseEntity<List<UserDto>> listarUsuarios() {
-        return ResponseEntity.ok(usuarioService.listarTodos());
+    public ResponseEntity<List<UserDto>> listUsers() {
+        return ResponseEntity.ok(usuarioService.listAll());
     }
 
     @PostMapping("/users")
-    public ResponseEntity<UserDto> crearUsuario(@Valid @RequestBody UserRequest request) {
+    public ResponseEntity<UserDto> createUser(@Valid @RequestBody UserRequest request) {
         request.setRol("PACIENTE");
-        return ResponseEntity.ok(usuarioService.crear(request));
+        return ResponseEntity.ok(usuarioService.create(request));
     }
 
     @PutMapping("/users/{id}")
-    public ResponseEntity<UserDto> actualizarUsuario(
+    public ResponseEntity<UserDto> updateUser(
             @PathVariable Long id, @Valid @RequestBody UserRequest request) {
-        return ResponseEntity.ok(usuarioService.actualizar(id, request));
+        return ResponseEntity.ok(usuarioService.update(id, request));
     }
 
     @DeleteMapping("/users/{id}")
-    public ResponseEntity<ApiMessage> eliminarUsuario(@PathVariable Long id) {
-        usuarioService.eliminar(id);
+    public ResponseEntity<ApiMessage> deactivateUser(@PathVariable Long id) {
+        usuarioService.remove(id);
         return ResponseEntity.ok(new ApiMessage("User desactivado"));
     }
 
     @PatchMapping("/users/{id}/estado")
-    public ResponseEntity<UserDto> cambiarEstado(@PathVariable Long id, @RequestParam boolean activo) {
-        return ResponseEntity.ok(usuarioService.cambiarEstado(id, activo));
+    public ResponseEntity<UserDto> changeActive(@PathVariable Long id, @RequestParam boolean activo) {
+        return ResponseEntity.ok(usuarioService.changeActive(id, activo));
     }
 
     @PatchMapping("/users/{id}/password")
-    public ResponseEntity<ApiMessage> restablecerClave(
+    public ResponseEntity<ApiMessage> resetPassword(
             @PathVariable Long id,
             @RequestBody java.util.Map<String, String> body,
             org.springframework.security.core.Authentication authentication) {
-        usuarioService.restablecerClave(
+        usuarioService.resetPassword(
                 id,
                 body.get("nuevaClave"),
                 body.get("claveAdmin"),
@@ -66,48 +66,48 @@ public class AdminController {
     }
 
     @PostMapping("/doctors")
-    public ResponseEntity<UserDto> crearMedico(@Valid @RequestBody UserRequest request) {
+    public ResponseEntity<UserDto> createDoctor(@Valid @RequestBody UserRequest request) {
         request.setRol("MEDICO");
-        return ResponseEntity.ok(usuarioService.crear(request));
+        return ResponseEntity.ok(usuarioService.create(request));
     }
 
     @GetMapping("/doctors")
-    public ResponseEntity<List<UserDto>> listarMedicos() {
-        return ResponseEntity.ok(usuarioService.listarTodosLosMedicos());
+    public ResponseEntity<List<UserDto>> listDoctors() {
+        return ResponseEntity.ok(usuarioService.listEveryDoctor());
     }
 
     @PutMapping("/doctors/{id}")
-    public ResponseEntity<UserDto> actualizarMedico(
+    public ResponseEntity<UserDto> updateDoctor(
             @PathVariable Long id, @Valid @RequestBody UserRequest request) {
-        return ResponseEntity.ok(usuarioService.actualizarMedico(id, request));
+        return ResponseEntity.ok(usuarioService.updateDoctor(id, request));
     }
 
     @GetMapping("/appointments")
-    public ResponseEntity<List<AppointmentResponse>> supervisarCitas() {
-        return ResponseEntity.ok(citaService.todasLasCitas());
+    public ResponseEntity<List<AppointmentResponse>> superviseAppointments() {
+        return ResponseEntity.ok(citaService.allAppointments());
     }
 
     @PatchMapping("/appointments/{id}/reschedule")
-    public ResponseEntity<RescheduleAppointmentResponse> reprogramarCita(
+    public ResponseEntity<RescheduleAppointmentResponse> rescheduleAppointment(
             @PathVariable Long id, @Valid @RequestBody RescheduleAppointmentRequest request,
             org.springframework.security.core.Authentication authentication) {
-        return ResponseEntity.ok(citaService.reprogramar(id, request, authentication.getName()));
+        return ResponseEntity.ok(citaService.reschedule(id, request, authentication.getName()));
     }
 
     @GetMapping("/reports")
-    public ResponseEntity<ReportResponse> reportes(
+    public ResponseEntity<ReportResponse> reports(
             @RequestParam(defaultValue = "2026") int anio) {
-        return ResponseEntity.ok(reporteService.generarReporte(anio));
+        return ResponseEntity.ok(reporteService.buildReport(anio));
     }
 
     @GetMapping("/ai-metrics")
-    public ResponseEntity<AiMetricsResponse> aiMetricas() {
-        return ResponseEntity.ok(reporteService.generarMetricasIA(
-                aiService.hayApiKey(), aiService.versionIa(), aiService.estadoTranscripcion()));
+    public ResponseEntity<AiMetricsResponse> aiMetrics() {
+        return ResponseEntity.ok(reporteService.buildAiMetrics(
+                aiService.hasApiKey(), aiService.versionIa(), aiService.transcriptionStatus()));
     }
 
     @PostMapping("/ai-ping")
-    public ResponseEntity<java.util.Map<String, String>> probarIa() {
-        return ResponseEntity.ok(aiService.probarConexion());
+    public ResponseEntity<java.util.Map<String, String>> pingAssistant() {
+        return ResponseEntity.ok(aiService.pingConnection());
     }
 }

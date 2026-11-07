@@ -39,7 +39,7 @@ public class AppointmentService {
     private final ScheduleService horarioService;
 
     @Transactional
-    public AppointmentResponse agendar(String emailPaciente, AppointmentRequest req) {
+    public AppointmentResponse book(String emailPaciente, AppointmentRequest req) {
         Patient paciente = pacienteRepository.findByUsuario_Email(emailPaciente)
                 .orElseThrow(() -> new RuntimeException("Perfil de paciente no encontrado"));
         Doctor medico = medicoRepository.findByIdForUpdate(req.getMedicoId())
@@ -49,23 +49,23 @@ public class AppointmentService {
         /* ====== Repriorización automática por gravedad ====== */
         String aviso = null;
         int nuevaPrioridad = req.getTriagePrioridad() != null ? req.getTriagePrioridad() : 5;
-        LocalDateTime desde = alinearMediaHora(LocalDateTime.now().plusMinutes(5));
-        if (req.getFechaHora() == null || !estaEnHorarioLaboral(medico, req.getFechaHora())
+        LocalDateTime desde = alignToHalfHour(LocalDateTime.now().plusMinutes(5));
+        if (req.getFechaHora() == null || !isWithinWorkHours(medico, req.getFechaHora())
                 || !req.getFechaHora().isAfter(LocalDateTime.now())) {
             if (nuevaPrioridad >= 8) {
-                req.setFechaHora(primerSlotLaboral(medico, desde));
+                req.setFechaHora(firstWorkSlot(medico, desde));
                 aviso = "Por la gravedad, la aplicación tomó el cupo más próximo del médico.";
             } else {
-                req.setFechaHora(buscarProximoSlotDisponible(medico, desde));
+                req.setFechaHora(findNextOpenSlot(medico, desde));
                 aviso = "La aplicación asignó el primer cupo libre del médico.";
             }
         }
-        validarHorarioPermitirSolape(medico, req.getFechaHora());
+        requireScheduleAllowingOverlap(medico, req.getFechaHora());
         var estadosActivos = List.of(AppointmentStatus.PENDIENTE, AppointmentStatus.ACEPTADA);
         LocalDateTime inicioBloque = req.getFechaHora();
         LocalDateTime finBloque = inicioBloque.plusMinutes(DURACION_CITA_MINUTOS);
 
-        List<Appointment> solapadas = citaRepository.findCitasSolapadasOrdenPrioridad(
+        List<Appointment> solapadas = citaRepository.findOverlappingByPriority(
                 medico, inicioBloque, finBloque, estadosActivos);
 
         if (!solapadas.isEmpty()) {
@@ -74,7 +74,7 @@ public class AppointmentService {
 
             if (nuevaPrioridad > prioridadExistente) {
                 /* El nuevo paciente es más grave → desplazar al existente */
-                LocalDateTime nuevaFechaDesplazado = buscarProximoSlotDisponible(medico, finBloque);
+                LocalDateTime nuevaFechaDesplazado = findNextOpenSlot(medico, finBloque);
                 var fechaAnterior = existente.getFechaHora();
                 existente.setFechaHora(nuevaFechaDesplazado);
                 citaRepository.save(existente);
@@ -98,7 +98,7 @@ public class AppointmentService {
                 cambioCitaRepository.save(cambio);
                 aviso = "Se priorizó tu caso. Otra cita de menor gravedad se reprogramó y se avisó por correo.";
             } else {
-                LocalDateTime slotAlternativo = buscarProximoSlotDisponible(medico, finBloque);
+                LocalDateTime slotAlternativo = findNextOpenSlot(medico, finBloque);
                 req.setFechaHora(slotAlternativo);
                 aviso = "Ese horario ya tenía un paciente de igual o mayor prioridad. Te asignamos el siguiente cupo: "
                         + slotAlternativo + ".";
@@ -133,25 +133,25 @@ public class AppointmentService {
         return dto;
     }
 
-    public List<SlotResponse> listarCupos(Long medicoId, int limite) {
+    public List<SlotResponse> listSlots(Long medicoId, int limite) {
         Doctor medico = medicoRepository.findById(medicoId)
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
         int max = Math.min(Math.max(limite, 1), 16);
-        List<SlotResponse> cupos = new ArrayList<>();
-        for (LocalDateTime slot : slotsLibres(medico, LocalDateTime.now().plusMinutes(5), max)) {
-            cupos.add(SlotResponse.builder()
+        List<SlotResponse> slots = new ArrayList<>();
+        for (LocalDateTime slot : openSlots(medico, LocalDateTime.now().plusMinutes(5), max)) {
+            slots.add(SlotResponse.builder()
                     .fechaHora(slot)
-                    .dia(ScheduleService.nombreDia(slot.getDayOfWeek().getValue()))
-                    .etiqueta(ScheduleService.nombreDia(slot.getDayOfWeek().getValue())
+                    .dia(ScheduleService.dayName(slot.getDayOfWeek().getValue()))
+                    .etiqueta(ScheduleService.dayName(slot.getDayOfWeek().getValue())
                             + " " + slot.toLocalDate() + " · " + slot.toLocalTime().withSecond(0).withNano(0))
                     .ocupadoMenorPrioridad(false)
                     .build());
         }
-        return cupos;
+        return slots;
     }
 
-    private LocalDateTime buscarProximoSlotDisponible(Doctor medico, LocalDateTime desde) {
-        List<LocalDateTime> slots = slotsLibres(medico, desde, 1);
+    private LocalDateTime findNextOpenSlot(Doctor medico, LocalDateTime desde) {
+        List<LocalDateTime> slots = openSlots(medico, desde, 1);
         if (slots.isEmpty()) {
             throw new RuntimeException("El médico no tiene cupos libres en las próximas semanas.");
         }
@@ -159,9 +159,9 @@ public class AppointmentService {
     }
 
     /** Una sola lectura de horarios y citas; recorre ventanas laborales, no cada media hora del mes. */
-    private List<LocalDateTime> slotsLibres(Doctor medico, LocalDateTime desde, int max) {
+    private List<LocalDateTime> openSlots(Doctor medico, LocalDateTime desde, int max) {
         horarioService.ensureWorkSchedule(medico);
-        var horarios = horarioRepository.findByMedicoAndDisponibleTrue(medico);
+        var schedules = horarioRepository.findByMedicoAndDisponibleTrue(medico);
         var estados = List.of(AppointmentStatus.PENDIENTE, AppointmentStatus.ACEPTADA);
         Set<LocalDateTime> ocupadas = new HashSet<>();
         for (Appointment c : citaRepository.findByMedicoOrderByFechaHoraAsc(medico)) {
@@ -170,17 +170,17 @@ public class AppointmentService {
             }
         }
         List<LocalDateTime> out = new ArrayList<>();
-        LocalDateTime piso = alinearMediaHora(desde);
+        LocalDateTime piso = alignToHalfHour(desde);
         LocalDate dia = piso.toLocalDate();
         for (int d = 0; d < 21 && out.size() < max; d++) {
             LocalDate fecha = dia.plusDays(d);
             int dow = fecha.getDayOfWeek().getValue();
-            for (var h : horarios) {
+            for (var h : schedules) {
                 if (h.getDiaSemana() != dow) continue;
                 LocalDateTime slot = fecha.atTime(h.getHoraInicio()).withSecond(0).withNano(0);
                 if (slot.isBefore(piso)) slot = piso.toLocalDate().equals(fecha) ? piso : slot;
                 if (slot.toLocalTime().isBefore(h.getHoraInicio())) slot = fecha.atTime(h.getHoraInicio());
-                slot = alinearMediaHora(slot);
+                slot = alignToHalfHour(slot);
                 while (out.size() < max
                         && slot.toLocalDate().equals(fecha)
                         && !slot.toLocalTime().isBefore(h.getHoraInicio())
@@ -195,19 +195,19 @@ public class AppointmentService {
         return out;
     }
 
-    private LocalDateTime primerSlotLaboral(Doctor medico, LocalDateTime desde) {
-        LocalDateTime candidato = alinearMediaHora(desde);
+    private LocalDateTime firstWorkSlot(Doctor medico, LocalDateTime desde) {
+        LocalDateTime candidato = alignToHalfHour(desde);
         for (int i = 0; i < 960; i++) {
-            if (estaEnHorarioLaboral(medico, candidato)) return candidato;
+            if (isWithinWorkHours(medico, candidato)) return candidato;
             candidato = candidato.plusMinutes(DURACION_CITA_MINUTOS);
             if (candidato.getHour() >= 21) {
                 candidato = candidato.plusDays(1).withHour(6).withMinute(0).withSecond(0).withNano(0);
             }
         }
-        return buscarProximoSlotDisponible(medico, desde);
+        return findNextOpenSlot(medico, desde);
     }
 
-    private static LocalDateTime alinearMediaHora(LocalDateTime t) {
+    private static LocalDateTime alignToHalfHour(LocalDateTime t) {
         LocalDateTime n = t.withSecond(0).withNano(0);
         int m = n.getMinute();
         if (m == 0 || m == 30) return n;
@@ -217,7 +217,7 @@ public class AppointmentService {
 
     private static String nvl(String s) { return s == null || s.isBlank() ? "no especificado" : s; }
 
-    public List<AppointmentResponse> historialPaciente(String email) {
+    public List<AppointmentResponse> patientHistory(String email) {
         Patient paciente = pacienteRepository.findByUsuario_Email(email)
                 .orElseThrow(() -> new RuntimeException("Patient no encontrado"));
         return citaRepository.findByPacienteOrderByFechaHoraDesc(paciente)
@@ -233,21 +233,21 @@ public class AppointmentService {
                 .map(AppointmentMapper::toDto).toList();
     }
 
-    public List<AppointmentResponse> citasMedico(String email) {
+    public List<AppointmentResponse> appointmentsForDoctor(String email) {
         Doctor medico = medicoRepository.findByUsuario_Email(email)
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
         return citaRepository.findByMedicoOrderByFechaHoraAsc(medico)
                 .stream().map(AppointmentMapper::toDto).toList();
     }
 
-    public List<AppointmentResponse> todasLasCitas() {
+    public List<AppointmentResponse> allAppointments() {
         return citaRepository.findAllByOrderByFechaHoraDesc()
                 .stream().map(AppointmentMapper::toDto).toList();
     }
 
     @Transactional
-    public RescheduleAppointmentResponse reprogramar(Long id, RescheduleAppointmentRequest request, String adminEmail) {
-        Appointment cita = buscar(id);
+    public RescheduleAppointmentResponse reschedule(Long id, RescheduleAppointmentRequest request, String adminEmail) {
+        Appointment cita = findStored(id);
         Doctor medico = medicoRepository.findByIdForUpdate(cita.getMedico().getId())
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
         if (cita.getEstado() != AppointmentStatus.PENDIENTE && cita.getEstado() != AppointmentStatus.ACEPTADA) {
@@ -257,7 +257,7 @@ public class AppointmentService {
             throw new RuntimeException("La nueva fecha debe ser diferente a la actual");
         }
         var estadosActivos = List.of(AppointmentStatus.PENDIENTE, AppointmentStatus.ACEPTADA);
-        validarHorario(medico, request.getFechaHora(), id);
+        requireSchedule(medico, request.getFechaHora(), id);
 
         var fechaAnterior = cita.getFechaHora();
         cita.setFechaHora(request.getFechaHora());
@@ -284,8 +284,8 @@ public class AppointmentService {
     }
 
     @Transactional
-    public AppointmentResponse cancelar(Long id, String emailPaciente) {
-        Appointment cita = buscar(id);
+    public AppointmentResponse cancel(Long id, String emailPaciente) {
+        Appointment cita = findStored(id);
         if (!cita.getPaciente().getUsuario().getEmail().equals(emailPaciente)) {
             throw new RuntimeException("No autorizado");
         }
@@ -299,9 +299,9 @@ public class AppointmentService {
     }
 
     @Transactional
-    public AppointmentResponse aceptar(Long id, String emailMedico) {
-        Appointment cita = buscar(id);
-        validarMedico(cita, emailMedico);
+    public AppointmentResponse accept(Long id, String emailMedico) {
+        Appointment cita = findStored(id);
+        requireDoctor(cita, emailMedico);
         cita.setEstado(AppointmentStatus.ACEPTADA);
         Appointment guardada = citaRepository.save(cita);
         notificacionCitaService.notifyAppointmentAccepted(guardada);
@@ -309,25 +309,25 @@ public class AppointmentService {
     }
 
     @Transactional
-    public AppointmentResponse rechazar(Long id, String emailMedico) {
-        Appointment cita = buscar(id);
-        validarMedico(cita, emailMedico);
+    public AppointmentResponse reject(Long id, String emailMedico) {
+        Appointment cita = findStored(id);
+        requireDoctor(cita, emailMedico);
         cita.setEstado(AppointmentStatus.RECHAZADA);
         Appointment guardada = citaRepository.save(cita);
         notificacionCitaService.notifyAppointmentRejected(guardada);
         return AppointmentMapper.toDto(guardada);
     }
 
-    public PatientProfileDto pacienteDeCita(Long citaId, String emailMedico) {
-        Appointment cita = buscar(citaId);
-        validarMedico(cita, emailMedico);
-        return pacienteService.toPerfilDto(cita.getPaciente());
+    public PatientProfileDto patientForAppointment(Long citaId, String emailMedico) {
+        Appointment cita = findStored(citaId);
+        requireDoctor(cita, emailMedico);
+        return pacienteService.toProfileDto(cita.getPaciente());
     }
 
     @Transactional
     public boolean sendPrescription(Long citaId, String emailMedico, PrescriptionRequest req) {
-        Appointment cita = buscar(citaId);
-        validarMedico(cita, emailMedico);
+        Appointment cita = findStored(citaId);
+        requireDoctor(cita, emailMedico);
         String medicamentos = req == null || req.getMedicamentos() == null ? "" : req.getMedicamentos().trim();
         String cuidados = req == null || req.getCuidados() == null ? "" : req.getCuidados().trim();
         String resumen = req == null || req.getResumen() == null ? "" : req.getResumen().trim();
@@ -347,9 +347,9 @@ public class AppointmentService {
         return notificacionCitaService.notifyPrescription(cita, mensaje.toString());
     }
 
-    public List<AppointmentResponse> historialPacienteDeCita(Long citaId, String emailMedico) {
-        Appointment cita = buscar(citaId);
-        validarMedico(cita, emailMedico);
+    public List<AppointmentResponse> historyForDoctorVisit(Long citaId, String emailMedico) {
+        Appointment cita = findStored(citaId);
+        requireDoctor(cita, emailMedico);
         Long medicoId = cita.getMedico().getId();
         return citaRepository.findByPacienteOrderByFechaHoraDesc(cita.getPaciente()).stream()
                 .filter(anterior -> anterior.getMedico() != null && medicoId.equals(anterior.getMedico().getId()))
@@ -358,26 +358,26 @@ public class AppointmentService {
                 .toList();
     }
 
-    private void validarMedico(Appointment cita, String emailMedico) {
+    private void requireDoctor(Appointment cita, String emailMedico) {
         if (!cita.getMedico().getUsuario().getEmail().equals(emailMedico)) {
             throw new RuntimeException("No autorizado");
         }
     }
 
-    private void validarHorario(Doctor medico, LocalDateTime fechaHora) {
-        validarHorario(medico, fechaHora, null);
+    private void requireSchedule(Doctor medico, LocalDateTime fechaHora) {
+        requireSchedule(medico, fechaHora, null);
     }
 
-    private void validarHorarioPermitirSolape(Doctor medico, LocalDateTime fechaHora) {
+    private void requireScheduleAllowingOverlap(Doctor medico, LocalDateTime fechaHora) {
         if (fechaHora == null || !fechaHora.isAfter(LocalDateTime.now())) {
             throw new RuntimeException("No hay un cupo futuro para este médico.");
         }
-        if (!estaEnHorarioLaboral(medico, fechaHora)) {
+        if (!isWithinWorkHours(medico, fechaHora)) {
             throw new RuntimeException("Ese cupo no está en el horario laboral del médico.");
         }
     }
 
-    private boolean estaEnHorarioLaboral(Doctor medico, LocalDateTime fechaHora) {
+    private boolean isWithinWorkHours(Doctor medico, LocalDateTime fechaHora) {
         if (fechaHora == null) return false;
         LocalDateTime finCita = fechaHora.plusMinutes(DURACION_CITA_MINUTOS);
         return horarioRepository.findByMedicoAndDisponibleTrue(medico).stream()
@@ -386,17 +386,17 @@ public class AppointmentService {
                         && !finCita.toLocalTime().isAfter(horario.getHoraFin()));
     }
 
-    private void validarHorario(Doctor medico, LocalDateTime fechaHora, Long citaExcluida) {
-        validarHorarioPermitirSolape(medico, fechaHora);
+    private void requireSchedule(Doctor medico, LocalDateTime fechaHora, Long citaExcluida) {
+        requireScheduleAllowingOverlap(medico, fechaHora);
         LocalDateTime finCita = fechaHora.plusMinutes(DURACION_CITA_MINUTOS);
         var estadosActivos = List.of(AppointmentStatus.PENDIENTE, AppointmentStatus.ACEPTADA);
-        if (citaRepository.existeCitaSolapada(medico, fechaHora.minusMinutes(DURACION_CITA_MINUTOS),
+        if (citaRepository.existsOverlappingAppointment(medico, fechaHora.minusMinutes(DURACION_CITA_MINUTOS),
             finCita, estadosActivos, citaExcluida)) {
             throw new RuntimeException("El médico ya tiene una cita activa en ese bloque de 30 minutos");
         }
     }
 
-    private Appointment buscar(Long id) {
+    private Appointment findStored(Long id) {
         return citaRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Appointment no encontrada"));
     }

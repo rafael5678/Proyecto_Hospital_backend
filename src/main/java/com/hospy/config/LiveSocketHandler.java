@@ -18,7 +18,7 @@ public class LiveSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String token = tokenOf(session);
-        if (token == null || !jwtService.esValido(token)) {
+        if (token == null || !jwtService.isValid(token)) {
             session.close(CloseStatus.NOT_ACCEPTABLE);
             return;
         }

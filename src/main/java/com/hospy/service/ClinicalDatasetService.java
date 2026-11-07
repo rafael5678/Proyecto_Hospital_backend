@@ -26,8 +26,8 @@ public class ClinicalDatasetService {
     public AiTriageResponse triage(AiTriageRequest req) {
         String texto = (nvl(req.getSintomas()) + " " + nvl(req.getDuracion()) + " " + nvl(req.getAntecedentes()))
                 .toLowerCase(Locale.ROOT);
-        JsonNode filas = leer("datasets/triage-esi-mts.json");
-        JsonNode extra = leer("datasets/triage-medqa-medmcqa.json");
+        JsonNode filas = markOneRead("datasets/triage-esi-mts.json");
+        JsonNode extra = markOneRead("datasets/triage-medqa-medmcqa.json");
         String sev = "Verde";
         int esi = 4;
         int prio = 4;
@@ -69,11 +69,11 @@ public class ClinicalDatasetService {
                 .build();
     }
 
-    public AiDermatologyResponse dermatologia(AiDermatologyRequest req) {
+    public AiDermatologyResponse dermatology(AiDermatologyRequest req) {
         AiDermatologyResponse porImagen = skinImageClassifier.clasificar(req.getImagenBase64());
         String texto = (nvl(req.getDescripcion()) + " " + nvl(req.getSintomasAsociados())
                 + " " + nvl(req.getTiempoEvolucion())).toLowerCase(Locale.ROOT);
-        JsonNode filas = leer("datasets/dermatology-ham10000.json");
+        JsonNode filas = markOneRead("datasets/dermatology-ham10000.json");
         String riesgo = "BAJO";
         double score = 0.2;
         List<String> dx = new ArrayList<>(List.of("Dermatitis inespecífica"));
@@ -167,7 +167,7 @@ public class ClinicalDatasetService {
     }
 
     public String contextoPielParaGemini(AiDermatologyRequest req) {
-        AiDermatologyResponse local = dermatologia(req);
+        AiDermatologyResponse local = dermatology(req);
         return "Referencia clasificador ExtraTrees + HAM10000/PAD-UFES: riesgo=" + local.getNivelRiesgo()
                 + ", score=" + local.getScoreRiesgo()
                 + ", diferenciales=[" + String.join("; ", nvlList(local.getDiagnosticosDiferenciales())) + "], "
@@ -175,10 +175,10 @@ public class ClinicalDatasetService {
                 + "Si hay foto, descríbela tú con detalle y corrige esta pista si no coincide.";
     }
 
-    public AiInteractionResponse interacciones(AiInteractionRequest req) {
+    public AiInteractionResponse interactions(AiInteractionRequest req) {
         List<String> meds = minusculas(req.getMedicamentos());
         List<String> dieta = minusculas(req.getDietaHabitual());
-        JsonNode filas = leer("datasets/interactions-drugbank.json");
+        JsonNode filas = markOneRead("datasets/interactions-drugbank.json");
         List<AiInteractionResponse.AlertaInteraccion> alertas = new ArrayList<>();
         String riesgo = "BAJO";
         if (filas != null) {
@@ -212,7 +212,7 @@ public class ClinicalDatasetService {
                 .modoDemo(false).build();
     }
 
-    private JsonNode leer(String ruta) {
+    private JsonNode markOneRead(String ruta) {
         try (InputStream in = new ClassPathResource(ruta).getInputStream()) {
             return mapper.readTree(in);
         } catch (Exception ex) {

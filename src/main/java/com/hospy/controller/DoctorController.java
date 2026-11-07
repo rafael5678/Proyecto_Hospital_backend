@@ -22,19 +22,19 @@ public class DoctorController {
     private final AppointmentService citaService;
 
     @GetMapping
-    public ResponseEntity<List<UserDto>> listarMedicos() {
-        return ResponseEntity.ok(usuarioService.listarMedicos());
+    public ResponseEntity<List<UserDto>> listDoctors() {
+        return ResponseEntity.ok(usuarioService.listDoctors());
     }
 
     @GetMapping("/{id}/schedules")
-    public ResponseEntity<List<ScheduleResponse>> horarios(@PathVariable Long id) {
-        return ResponseEntity.ok(horarioService.listarPorMedico(id));
+    public ResponseEntity<List<ScheduleResponse>> schedules(@PathVariable Long id) {
+        return ResponseEntity.ok(horarioService.listByDoctor(id));
     }
 
     @GetMapping("/{id}/slots")
-    public ResponseEntity<List<SlotResponse>> cupos(
+    public ResponseEntity<List<SlotResponse>> slots(
             @PathVariable Long id,
             @RequestParam(defaultValue = "12") int limite) {
-        return ResponseEntity.ok(citaService.listarCupos(id, limite));
+        return ResponseEntity.ok(citaService.listSlots(id, limite));
     }
 }

@@ -18,7 +18,7 @@ public class HealthController {
         return Map.of(
                 "status", "ok",
                 "app", "Sistema Hospy",
-                "gemini", aiService.hayGemini() ? "activo" : "sin_clave",
+                "gemini", aiService.hasGemini() ? "activo" : "sin_clave",
                 "perfil", "completo"
         );
     }

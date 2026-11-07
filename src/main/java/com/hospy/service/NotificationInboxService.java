@@ -26,13 +26,13 @@ public class NotificationInboxService {
     private final LiveEvents liveEvents;
 
     @Transactional
-    public void crearParaEmail(String email, String titulo, String mensaje, String tipo, Long citaId) {
+    public void createForEmail(String email, String titulo, String mensaje, String tipo, Long citaId) {
         if (email == null || email.isBlank()) return;
-        usuarioRepository.findByEmail(email).ifPresent(u -> crear(u, titulo, mensaje, tipo, citaId));
+        usuarioRepository.findByEmail(email).ifPresent(u -> create(u, titulo, mensaje, tipo, citaId));
     }
 
     @Transactional
-    public void crear(User usuario, String titulo, String mensaje, String tipo, Long citaId) {
+    public void create(User usuario, String titulo, String mensaje, String tipo, Long citaId) {
         notificacionRepository.save(Notification.builder()
                 .usuario(usuario)
                 .titulo(titulo)
@@ -58,7 +58,7 @@ public class NotificationInboxService {
         });
     }
 
-    public List<NotificationResponse> listar(String email) {
+    public List<NotificationResponse> list(String email) {
         User u = usuario(email);
         return notificacionRepository.findByUsuarioOrderByCreadaEnDesc(u).stream()
                 .limit(30)
@@ -66,12 +66,12 @@ public class NotificationInboxService {
                 .toList();
     }
 
-    public long noLeidas(String email) {
+    public long unreadCount(String email) {
         return notificacionRepository.countByUsuarioAndLeidaFalse(usuario(email));
     }
 
     @Transactional
-    public void marcarLeida(Long id, String email) {
+    public void markRead(Long id, String email) {
         User u = usuario(email);
         notificacionRepository.findById(id).ifPresent(n -> {
             if (n.getUsuario().getId().equals(u.getId())) {
@@ -123,7 +123,7 @@ public class NotificationInboxService {
             String nombre = cita.getPaciente().getUsuario().getNombre();
             String medico = cita.getMedico().getUsuario().getNombre();
             String especialidad = cita.getMedico().getEspecialidad();
-            crear(cita.getPaciente().getUsuario(),
+            create(cita.getPaciente().getUsuario(),
                     "Tu cita fue aceptada",
                     "Hola " + nombre + ", " + medico + " aceptó tu cita de " + especialidad
                             + ". Revisa el detalle en tu portal Hospy.",
@@ -133,7 +133,7 @@ public class NotificationInboxService {
     }
 
     @Transactional
-    public void marcarTodas(String email) {
+    public void markAllRead(String email) {
         User u = usuario(email);
         notificacionRepository.findByUsuarioOrderByCreadaEnDesc(u).forEach(n -> {
             if (!Boolean.TRUE.equals(n.getLeida())) {

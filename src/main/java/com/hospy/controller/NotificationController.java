@@ -20,28 +20,28 @@ public class NotificationController {
     private final NotificationInboxService inbox;
 
     @GetMapping
-    public ResponseEntity<List<NotificationResponse>> listar() {
-        return ResponseEntity.ok(inbox.listar(emailActual()));
+    public ResponseEntity<List<NotificationResponse>> list() {
+        return ResponseEntity.ok(inbox.list(currentEmail()));
     }
 
     @GetMapping("/unread")
-    public ResponseEntity<Map<String, Long>> noLeidas() {
-        return ResponseEntity.ok(Map.of("total", inbox.noLeidas(emailActual())));
+    public ResponseEntity<Map<String, Long>> unreadCount() {
+        return ResponseEntity.ok(Map.of("total", inbox.unreadCount(currentEmail())));
     }
 
     @PatchMapping("/{id}/read")
-    public ResponseEntity<Void> leer(@PathVariable Long id) {
-        inbox.marcarLeida(id, emailActual());
+    public ResponseEntity<Void> markOneRead(@PathVariable Long id) {
+        inbox.markRead(id, currentEmail());
         return ResponseEntity.ok().build();
     }
 
     @PatchMapping("/read-all")
-    public ResponseEntity<Void> leerTodas() {
-        inbox.marcarTodas(emailActual());
+    public ResponseEntity<Void> markAllRead() {
+        inbox.markAllRead(currentEmail());
         return ResponseEntity.ok().build();
     }
 
-    private String emailActual() {
+    private String currentEmail() {
         return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 }

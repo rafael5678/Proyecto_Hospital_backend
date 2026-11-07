@@ -23,7 +23,7 @@ public class AiController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<AiStatusResponse> status() {
         return ResponseEntity.ok(new AiStatusResponse(
-                aiService.hayApiKey(),
+                aiService.hasApiKey(),
                 aiService.versionIa() + "; requiere revisión profesional"
         ));
     }
@@ -38,8 +38,8 @@ public class AiController {
     /* Pacientes y médicos pueden evaluar lesiones */
     @PostMapping("/dermatology")
     @PreAuthorize("hasAnyRole('PACIENTE','MEDICO','ADMIN')")
-    public ResponseEntity<AiDermatologyResponse> dermatologia(@Valid @RequestBody AiDermatologyRequest req) {
-        return ResponseEntity.ok(aiService.dermatologia(req));
+    public ResponseEntity<AiDermatologyResponse> dermatology(@Valid @RequestBody AiDermatologyRequest req) {
+        return ResponseEntity.ok(aiService.dermatology(req));
     }
 
     /* Solo médicos y admins pueden usar el escriba SOAP clínico */
@@ -51,13 +51,13 @@ public class AiController {
 
     @PostMapping("/consulta")
     @PreAuthorize("hasAnyRole('MEDICO','ADMIN')")
-    public ResponseEntity<AiConsultaSimResponse> consulta(@RequestBody AiConsultaSimRequest req) {
+    public ResponseEntity<AiConsultaSimResponse> consult(@RequestBody AiConsultaSimRequest req) {
         return ResponseEntity.ok(aiService.consultaSimulada(req));
     }
 
     @PostMapping(value = "/transcribe", consumes = "multipart/form-data")
     @PreAuthorize("hasAnyRole('MEDICO','ADMIN')")
-    public ResponseEntity<AiTranscriptionResponse> transcribir(@RequestParam("audio") MultipartFile audio) throws IOException {
+    public ResponseEntity<AiTranscriptionResponse> transcribe(@RequestParam("audio") MultipartFile audio) throws IOException {
         if (audio.isEmpty()) return ResponseEntity.badRequest().build();
         if (audio.getSize() > 10 * 1024 * 1024) return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build();
         String tipo = audio.getContentType() == null ? "" : audio.getContentType().toLowerCase();
@@ -66,27 +66,27 @@ public class AiController {
                 !tipo.startsWith("audio/mpeg")) {
             return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).build();
         }
-        return ResponseEntity.ok(aiService.transcribir(audio.getBytes(), tipo));
+        return ResponseEntity.ok(aiService.transcribe(audio.getBytes(), tipo));
     }
 
     /* Pacientes, médicos y admins pueden revisar interacciones */
     @PostMapping("/interactions")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<AiInteractionResponse> interacciones(@Valid @RequestBody AiInteractionRequest req) {
-        return ResponseEntity.ok(aiService.interacciones(req));
+    public ResponseEntity<AiInteractionResponse> interactions(@Valid @RequestBody AiInteractionRequest req) {
+        return ResponseEntity.ok(aiService.interactions(req));
     }
 
     @PostMapping("/admin-operacion")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<AiAdminOperationResponse> adminOperacion(@Valid @RequestBody AiAdminOperationRequest req) {
-        return ResponseEntity.ok(aiService.adminOperacion(req));
+    public ResponseEntity<AiAdminOperationResponse> adminOperation(@Valid @RequestBody AiAdminOperationRequest req) {
+        return ResponseEntity.ok(aiService.adminOperation(req));
     }
 
     /* Todos (autenticados) pueden triangular precios */
     @PostMapping("/prices")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<AiPricesResponse> precios(@Valid @RequestBody AiPricesRequest req) {
-        return ResponseEntity.ok(aiService.precios(req));
+    public ResponseEntity<AiPricesResponse> prices(@Valid @RequestBody AiPricesRequest req) {
+        return ResponseEntity.ok(aiService.prices(req));
     }
 
     public record AiStatusResponse(boolean apiKeyActiva, String version) { }

@@ -20,7 +20,7 @@ public class JwtService {
     @Value("${jwt.expiration}")
     private long expiration;
 
-    public String generarToken(String email, String rol, Long userId) {
+    public String generateToken(String email, String rol, Long userId) {
         Date ahora = new Date();
         Date expira = new Date(ahora.getTime() + expiration);
         return Jwts.builder()
@@ -44,7 +44,7 @@ public class JwtService {
         return extractClaims(token).get("userId", Long.class);
     }
 
-    public boolean esValido(String token) {
+    public boolean isValid(String token) {
         try {
             Claims claims = extractClaims(token);
             return claims.getExpiration().after(new Date());

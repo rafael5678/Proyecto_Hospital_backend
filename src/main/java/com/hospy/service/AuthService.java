@@ -25,7 +25,7 @@ public class AuthService {
 
     /** Public patient registration. Doctors and admins are created by the hospital admin. */
     @Transactional
-    public void registrar(RegisterRequest req) {
+    public void register(RegisterRequest req) {
         if (usuarioRepository.existsByEmail(req.getEmail())) {
             throw new RuntimeException("El email ya está registrado");
         }
@@ -43,7 +43,7 @@ public class AuthService {
                 .activo(true)
                 .build();
         usuario = usuarioRepository.save(usuario);
-        perfilService.crearPaciente(usuario, req);
+        perfilService.createPatient(usuario, req);
     }
 
     /** Single login: the stored role decides which portal opens. */
@@ -51,7 +51,7 @@ public class AuthService {
         if (hasSpace(req.getEmail()) || hasSpace(req.getPassword())) {
             throw new RuntimeException("El correo y la contraseña no llevan espacios.");
         }
-        User usuario = usuarioRepository.findByEmail(resolverEmailLogin(req.getEmail(), req.getRol()))
+        User usuario = usuarioRepository.findByEmail(resolveLoginEmail(req.getEmail(), req.getRol()))
                 .orElseThrow(() -> new RuntimeException("Credenciales inválidas"));
         if (!passwordEncoder.matches(req.getPassword(), usuario.getPassword())) {
             throw new RuntimeException("Credenciales inválidas");
@@ -63,7 +63,7 @@ public class AuthService {
                 && !usuario.getRol().name().equalsIgnoreCase(req.getRol())) {
             throw new RuntimeException("No tienes acceso a este portal");
         }
-        String token = jwtService.generarToken(
+        String token = jwtService.generateToken(
                 usuario.getEmail(),
                 usuario.getRol().name(),
                 usuario.getId()
@@ -91,7 +91,7 @@ public class AuthService {
     }
 
     /** Admin demo también entra con usuario "admin"; médico demo con "doctor". */
-    private String resolverEmailLogin(String identificador, String rol) {
+    private String resolveLoginEmail(String identificador, String rol) {
         if (identificador == null) {
             return "";
         }

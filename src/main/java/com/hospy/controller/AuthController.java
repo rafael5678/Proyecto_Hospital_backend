@@ -18,8 +18,8 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/register")
-    public ResponseEntity<ApiMessage> registrar(@Valid @RequestBody RegisterRequest request) {
-        authService.registrar(request);
+    public ResponseEntity<ApiMessage> register(@Valid @RequestBody RegisterRequest request) {
+        authService.register(request);
         return ResponseEntity.ok(new ApiMessage(
                 "Registro exitoso. Inicie sesión en el portal de pacientes."));
     }

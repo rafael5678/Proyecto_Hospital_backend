@@ -18,18 +18,18 @@ public class PatientService {
     private final PatientRepository pacienteRepository;
     private final AppointmentRepository citaRepository;
 
-    public Patient buscarPorEmail(String email) {
+    public Patient findByEmail(String email) {
         return pacienteRepository.findByUsuario_Email(email)
                 .orElseThrow(() -> new RuntimeException("Patient no encontrado"));
     }
 
-    public PatientProfileDto obtenerPerfil(String email) {
-        return toPerfilDto(buscarPorEmail(email));
+    public PatientProfileDto loadProfile(String email) {
+        return toProfileDto(findByEmail(email));
     }
 
     @Transactional
-    public PatientProfileDto actualizarPerfil(String email, PatientProfileDto dto) {
-        Patient p = buscarPorEmail(email);
+    public PatientProfileDto updateProfile(String email, PatientProfileDto dto) {
+        Patient p = findByEmail(email);
         User u = p.getUsuario();
         if (dto.getNombre() != null) u.setNombre(dto.getNombre());
         if (dto.getTelefono() != null) u.setTelefono(ColombianPhone.normalize(dto.getTelefono(), "El teléfono"));
@@ -45,16 +45,16 @@ public class PatientService {
             p.setTelefonoEmergencia(ColombianPhone.normalize(dto.getTelefonoEmergencia(), "El teléfono de emergencia"));
         }
         if (dto.getObservaciones() != null) p.setObservaciones(dto.getObservaciones());
-        return toPerfilDto(pacienteRepository.save(p));
+        return toProfileDto(pacienteRepository.save(p));
     }
 
     public PatientDashboardDto dashboard(String email) {
-        Patient p = buscarPorEmail(email);
+        Patient p = findByEmail(email);
         List<Appointment> citas = citaRepository.findByPacienteOrderByFechaHoraDesc(p);
         long pendientes = citas.stream().filter(c -> c.getEstado() == AppointmentStatus.PENDIENTE).count();
         long aceptadas = citas.stream().filter(c -> c.getEstado() == AppointmentStatus.ACEPTADA).count();
         long canceladas = citas.stream().filter(c -> c.getEstado() == AppointmentStatus.CANCELADA).count();
-        long proximas = citas.stream()
+        long upcoming = citas.stream()
                 .filter(c -> c.getFechaHora().isAfter(LocalDateTime.now())
                         && (c.getEstado() == AppointmentStatus.PENDIENTE || c.getEstado() == AppointmentStatus.ACEPTADA))
                 .count();
@@ -63,11 +63,11 @@ public class PatientService {
                 .citasPendientes(pendientes)
                 .citasAceptadas(aceptadas)
                 .citasCanceladas(canceladas)
-                .proximasCitas(proximas)
+                .proximasCitas(upcoming)
                 .build();
     }
 
-    public PatientProfileDto toPerfilDto(Patient p) {
+    public PatientProfileDto toProfileDto(Patient p) {
         User u = p.getUsuario();
         return PatientProfileDto.builder()
                 .id(p.getId())

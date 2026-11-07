@@ -23,40 +23,40 @@ public class PatientController {
 
     @GetMapping("/dashboard")
     public ResponseEntity<PatientDashboardDto> dashboard() {
-        return ResponseEntity.ok(pacienteService.dashboard(emailActual()));
+        return ResponseEntity.ok(pacienteService.dashboard(currentEmail()));
     }
 
     @GetMapping("/profile")
-    public ResponseEntity<PatientProfileDto> perfil() {
-        return ResponseEntity.ok(pacienteService.obtenerPerfil(emailActual()));
+    public ResponseEntity<PatientProfileDto> profile() {
+        return ResponseEntity.ok(pacienteService.loadProfile(currentEmail()));
     }
 
     @PutMapping("/profile")
-    public ResponseEntity<PatientProfileDto> actualizarPerfil(@RequestBody PatientProfileDto dto) {
-        return ResponseEntity.ok(pacienteService.actualizarPerfil(emailActual(), dto));
+    public ResponseEntity<PatientProfileDto> updateProfile(@RequestBody PatientProfileDto dto) {
+        return ResponseEntity.ok(pacienteService.updateProfile(currentEmail(), dto));
     }
 
     @PostMapping("/appointments")
-    public ResponseEntity<AppointmentResponse> agendar(@Valid @RequestBody AppointmentRequest request) {
-        return ResponseEntity.ok(citaService.agendar(emailActual(), request));
+    public ResponseEntity<AppointmentResponse> book(@Valid @RequestBody AppointmentRequest request) {
+        return ResponseEntity.ok(citaService.book(currentEmail(), request));
     }
 
     @GetMapping("/appointments/history")
     public ResponseEntity<List<AppointmentResponse>> historial() {
-        return ResponseEntity.ok(citaService.historialPaciente(emailActual()));
+        return ResponseEntity.ok(citaService.patientHistory(currentEmail()));
     }
 
     @GetMapping("/appointments/upcoming")
-    public ResponseEntity<List<AppointmentResponse>> proximas() {
-        return ResponseEntity.ok(citaService.proximasCitas(emailActual()));
+    public ResponseEntity<List<AppointmentResponse>> upcoming() {
+        return ResponseEntity.ok(citaService.proximasCitas(currentEmail()));
     }
 
     @PatchMapping("/appointments/{id}/cancel")
-    public ResponseEntity<AppointmentResponse> cancelar(@PathVariable Long id) {
-        return ResponseEntity.ok(citaService.cancelar(id, emailActual()));
+    public ResponseEntity<AppointmentResponse> cancel(@PathVariable Long id) {
+        return ResponseEntity.ok(citaService.cancel(id, currentEmail()));
     }
 
-    private String emailActual() {
+    private String currentEmail() {
         return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 }

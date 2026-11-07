@@ -21,17 +21,17 @@ public class DoctorProfileService {
     private final AppointmentRepository citaRepository;
     private final ScheduleRepository horarioRepository;
 
-    public Doctor buscarPorEmail(String email) {
+    public Doctor findByEmail(String email) {
         return medicoRepository.findByUsuario_Email(email)
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
     }
 
-    public DoctorProfileDto obtenerPerfil(String email) {
-        return toDto(buscarPorEmail(email));
+    public DoctorProfileDto loadProfile(String email) {
+        return toDto(findByEmail(email));
     }
 
     public DoctorDashboardDto dashboard(String email) {
-        Doctor m = buscarPorEmail(email);
+        Doctor m = findByEmail(email);
         List<Appointment> citas = citaRepository.findByMedicoOrderByFechaHoraAsc(m);
         LocalDate hoy = LocalDate.now();
         long hoyCount = citas.stream()

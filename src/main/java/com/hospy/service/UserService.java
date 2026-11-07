@@ -28,24 +28,24 @@ public class UserService {
     private final ScheduleService horarioService;
     private final SecretBox secretBox;
 
-    public List<UserDto> listarTodos() {
+    public List<UserDto> listAll() {
         List<UserDto> lista = new ArrayList<>();
         pacienteRepository.findAll().forEach(p -> lista.add(withReadablePassword(UserMapper.fromPaciente(p), p.getUsuario())));
         medicoRepository.findAll().forEach(m -> {
             UserDto dto = withReadablePassword(UserMapper.fromMedico(m), m.getUsuario());
-            horarioService.completarHorario(m, dto);
+            horarioService.fillSchedule(m, dto);
             lista.add(dto);
         });
         administradorRepository.findAll().forEach(a -> lista.add(withReadablePassword(UserMapper.fromAdministrador(a), a.getUsuario())));
         return lista;
     }
 
-    public UserDto obtenerPorId(Long id) {
-        return UserMapper.fromUsuario(buscar(id));
+    public UserDto getById(Long id) {
+        return UserMapper.fromUsuario(findStored(id));
     }
 
     @Transactional
-    public UserDto crear(UserRequest req) {
+    public UserDto create(UserRequest req) {
         if (usuarioRepository.existsByEmail(req.getEmail())) {
             throw new RuntimeException("El email ya existe");
         }
@@ -59,7 +59,7 @@ public class UserService {
         if (rol == Role.PACIENTE && (req.getDocumento() == null || req.getDocumento().isBlank())) {
             throw new RuntimeException("El paciente requiere documento de identidad.");
         }
-        String claveNueva = exigirClave(req.getPassword());
+        String claveNueva = requirePassword(req.getPassword());
         User usuario = User.builder()
                 .nombre(req.getNombre())
                 .email(req.getEmail())
@@ -70,12 +70,12 @@ public class UserService {
                 .activo(req.getActivo() != null ? req.getActivo() : true)
                 .build();
         usuario = usuarioRepository.save(usuario);
-        perfilService.crearPerfil(usuario, req);
+        perfilService.createProfile(usuario, req);
         if (rol == Role.MEDICO) {
             medicoRepository.findByUsuario(usuario).ifPresent(medico -> {
                 if (req.getDiasAtencion() != null && !req.getDiasAtencion().isBlank()
                         && req.getHoraInicio() != null && req.getHoraFin() != null) {
-                    horarioService.definirHorario(medico, req.getDiasAtencion(), req.getHoraInicio(),
+                    horarioService.defineSchedule(medico, req.getDiasAtencion(), req.getHoraInicio(),
                             req.getHoraFin(), req.getHoraInicio2(), req.getHoraFin2());
                 } else {
                     horarioService.ensureWorkSchedule(medico);
@@ -86,8 +86,8 @@ public class UserService {
     }
 
     @Transactional
-    public UserDto actualizar(Long id, UserRequest req) {
-        User usuario = buscar(id);
+    public UserDto update(Long id, UserRequest req) {
+        User usuario = findStored(id);
         if (req.getNombre() == null || req.getNombre().isBlank()) {
             throw new RuntimeException("El nombre es obligatorio.");
         }
@@ -105,23 +105,23 @@ public class UserService {
         }
         if (req.getActivo() != null) usuario.setActivo(req.getActivo());
         if (req.getPassword() != null && !req.getPassword().isBlank()) {
-            String clave = exigirClave(req.getPassword());
+            String clave = requirePassword(req.getPassword());
             usuario.setPassword(passwordEncoder.encode(clave));
             usuario.setClaveCifrada(secretBox.cifrar(clave));
         }
         usuarioRepository.save(usuario);
-        perfilService.actualizarPerfil(usuario, req);
+        perfilService.updateProfile(usuario, req);
         if (usuario.getRol() == Role.MEDICO
                 && req.getDiasAtencion() != null && !req.getDiasAtencion().isBlank()
                 && req.getHoraInicio() != null && req.getHoraFin() != null) {
             medicoRepository.findByUsuario(usuario).ifPresent(medico ->
-                    horarioService.definirHorario(medico, req.getDiasAtencion(), req.getHoraInicio(),
+                    horarioService.defineSchedule(medico, req.getDiasAtencion(), req.getHoraInicio(),
                             req.getHoraFin(), req.getHoraInicio2(), req.getHoraFin2()));
         }
         return withReadablePassword(toDtoByRol(usuario), usuario);
     }
 
-    private String exigirClave(String valor) {
+    private String requirePassword(String valor) {
         String clave = valor == null ? "" : valor;
         if (clave.chars().anyMatch(Character::isWhitespace)) {
             throw new RuntimeException("La contraseña no lleva espacios.");
@@ -140,7 +140,7 @@ public class UserService {
     }
 
     @Transactional
-    public void restablecerClave(Long id, String nuevaClave, String claveAdmin, String emailAdmin) {
+    public void resetPassword(Long id, String nuevaClave, String claveAdmin, String emailAdmin) {
         if (claveAdmin == null || claveAdmin.isBlank()) {
             throw new RuntimeException("Escribe tu contraseña de administrador para confirmar.");
         }
@@ -149,23 +149,23 @@ public class UserService {
         if (admin.getRol() != Role.ADMIN || !passwordEncoder.matches(claveAdmin, admin.getPassword())) {
             throw new RuntimeException("La contraseña de administrador no coincide.");
         }
-        User usuario = buscar(id);
+        User usuario = findStored(id);
         if (usuario.getRol() == Role.ADMIN) {
             throw new RuntimeException("La clave del administrador no se cambia desde esta pantalla.");
         }
-        String clave = exigirClave(nuevaClave);
+        String clave = requirePassword(nuevaClave);
         usuario.setPassword(passwordEncoder.encode(clave));
         usuario.setClaveCifrada(secretBox.cifrar(clave));
         usuarioRepository.save(usuario);
     }
 
-    public void eliminar(Long id) {
-        cambiarEstado(id, false);
+    public void remove(Long id) {
+        changeActive(id, false);
     }
 
     @Transactional
-    public UserDto cambiarEstado(Long id, boolean activo) {
-        User usuario = buscar(id);
+    public UserDto changeActive(Long id, boolean activo) {
+        User usuario = findStored(id);
         if (usuario.getRol() == Role.ADMIN) {
             throw new RuntimeException("El administrador único no se puede desactivar.");
         }
@@ -174,30 +174,30 @@ public class UserService {
         return toDtoByRol(usuario);
     }
 
-    public List<UserDto> listarTodosLosMedicos() {
+    public List<UserDto> listEveryDoctor() {
         return medicoRepository.findAll().stream().map(UserMapper::fromMedico).toList();
     }
 
-    public User buscar(Long id) {
+    public User findStored(Long id) {
         return usuarioRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User no encontrado"));
     }
 
-    public User buscarPorEmail(String email) {
+    public User findByEmail(String email) {
         return usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User no encontrado"));
     }
 
-    public List<UserDto> listarMedicos() {
+    public List<UserDto> listDoctors() {
         return medicoRepository.findByUsuario_ActivoTrue()
                 .stream().map(UserMapper::fromMedico).toList();
     }
 
     @Transactional
-    public UserDto actualizarMedico(Long medicoId, UserRequest req) {
+    public UserDto updateDoctor(Long medicoId, UserRequest req) {
         Doctor medico = medicoRepository.findById(medicoId)
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
-        return actualizar(medico.getUsuario().getId(), req);
+        return update(medico.getUsuario().getId(), req);
     }
 
     private UserDto toDtoByRol(User usuario) {
