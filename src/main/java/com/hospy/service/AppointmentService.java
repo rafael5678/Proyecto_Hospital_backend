@@ -341,9 +341,9 @@ public class AppointmentService {
         String medico = cita.getMedico().getUsuario().getNombre();
         StringBuilder mensaje = new StringBuilder();
         mensaje.append(medico).append(" te dejó estas indicaciones de la consulta.");
-        if (!resumen.isBlank()) mensaje.append("\n\nQué vimos: ").append(resumen);
         if (!medicamentos.isBlank()) mensaje.append("\n\nMedicamentos: ").append(medicamentos);
         if (!cuidados.isBlank()) mensaje.append("\n\nQué hacer: ").append(cuidados);
+        if (!resumen.isBlank()) mensaje.append("\n\nQué vimos: ").append(resumen);
         return notificacionCitaService.notifyPrescription(cita, mensaje.toString());
     }
 

@@ -36,7 +36,7 @@ public class NotificationInboxService {
         notificacionRepository.save(Notification.builder()
                 .usuario(usuario)
                 .titulo(titulo)
-                .mensaje(mensaje.length() > 800 ? mensaje.substring(0, 797) + "..." : mensaje)
+                .mensaje(mensaje.length() > 4000 ? mensaje.substring(0, 3997) + "..." : mensaje)
                 .tipo(tipo)
                 .citaId(citaId)
                 .leida(false)
