@@ -189,8 +189,12 @@ public class AiService {
     }
 
     private Optional<String> callLlm(String systemPrompt, String userPrompt, boolean ligeroPrimero) {
+        return callLlm(systemPrompt, userPrompt, ligeroPrimero, 0);
+    }
+
+    private Optional<String> callLlm(String systemPrompt, String userPrompt, boolean ligeroPrimero, int maxTokens) {
         if (hasGemini()) {
-            Optional<String> gemini = callGemini(systemPrompt, userPrompt, null, null, true, ligeroPrimero);
+            Optional<String> gemini = callGemini(systemPrompt, userPrompt, null, null, true, ligeroPrimero, maxTokens);
             if (gemini.isPresent()) return gemini;
         }
         if (hasOpenAi()) return callOpenAi(systemPrompt, userPrompt);
@@ -237,11 +241,16 @@ public class AiService {
 
     private Optional<String> callGemini(String systemPrompt, String userPrompt, String mimeType, String base64,
                                           boolean json, boolean ligeroPrimero) {
+        return callGemini(systemPrompt, userPrompt, mimeType, base64, json, ligeroPrimero, 0);
+    }
+
+    private Optional<String> callGemini(String systemPrompt, String userPrompt, String mimeType, String base64,
+                                          boolean json, boolean ligeroPrimero, int maxTokens) {
         if (!hasGemini()) return Optional.empty();
         long ahora = System.currentTimeMillis();
         for (String modelo : geminiModels(ligeroPrimero)) {
             if (modeloAgotadoHasta.getOrDefault(modelo, 0L) > ahora) continue;
-            Optional<String> out = callGeminiModel(modelo, systemPrompt, userPrompt, mimeType, base64, json);
+            Optional<String> out = callGeminiModel(modelo, systemPrompt, userPrompt, mimeType, base64, json, maxTokens);
             if (out.isPresent()) return out;
         }
         return Optional.empty();
@@ -274,6 +283,11 @@ public class AiService {
 
     private Optional<String> callGeminiModel(String modelo, String systemPrompt, String userPrompt,
                                                String mimeType, String base64, boolean json) {
+        return callGeminiModel(modelo, systemPrompt, userPrompt, mimeType, base64, json, 0);
+    }
+
+    private Optional<String> callGeminiModel(String modelo, String systemPrompt, String userPrompt,
+                                               String mimeType, String base64, boolean json, int maxTokens) {
         try {
             List<Map<String, Object>> parts = new ArrayList<>();
             parts.add(Map.of("text", userPrompt));
@@ -291,6 +305,9 @@ public class AiService {
             }
             if (json) {
                 gen.put("responseMimeType", "application/json");
+            }
+            if (maxTokens > 0) {
+                gen.put("maxOutputTokens", maxTokens);
             }
             body.put("generationConfig", gen);
 
@@ -1356,6 +1373,7 @@ public class AiService {
                 Eres el paciente, sentado frente al médico. Hablas en primera persona, en español de Colombia, con voz natural.
                 Respondes en dos a cinco frases, como en una consulta de verdad. No hables como un informe ni des un diagnóstico.
                 No contradigas el motivo, el contexto ni lo que ya dijiste en el diálogo.
+                Si la conversación ya empezó, sigue como la misma persona: recuerdas lo dicho y no te presentas de nuevo.
                 Si el médico pregunta algo que no está escrito (desde cuándo, qué otros síntomas, alergias, fiebre, qué has tomado, qué lo empeora),
                 respóndele igual: completa el dato de forma sencilla, creíble y estable. Si vuelve a preguntarlo, repite la misma respuesta.
                 Nunca digas que no tienes el dato, que no lo contaste o que eres una simulación.
@@ -1365,13 +1383,17 @@ public class AiService {
                  "cuidados":"qué puedes hacer en casa"}
                 """;
         String dialogo = req.getDialogo() == null ? "" : String.join("\n", req.getDialogo());
+        String contexto = nvl(req.getContexto());
+        if (contexto.length() > 1000) {
+            contexto = contexto.substring(0, 450) + "\n...\n" + contexto.substring(contexto.length() - 450);
+        }
         String user = "Paciente: " + nvl(req.getNombrePaciente()) +
                 "\nMotivo: " + nvl(req.getMotivo()) +
-                "\nContexto:\n" + nvl(req.getContexto()) +
+                "\nContexto:\n" + contexto +
                 "\nDiálogo previo:\n" + (dialogo.isBlank() ? "aún no empieza" : dialogo) +
                 "\nPregunta del médico: " + (req.getPregunta() == null || req.getPregunta().isBlank()
                 ? "saluda y cuenta con tus palabras lo que te trajo" : req.getPregunta());
-        Optional<String> llm = callLlm(system, user, true);
+        Optional<String> llm = callLlm(system, user, true, 1200);
         if (llm.isEmpty()) return consultaMock(req);
         try {
             AiConsultaSimResponse r = leerConsulta(llm.get());
