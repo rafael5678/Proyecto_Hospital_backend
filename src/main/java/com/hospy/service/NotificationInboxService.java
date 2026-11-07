@@ -21,6 +21,7 @@ public class NotificationInboxService {
     private final NotificationRepository notificacionRepository;
     private final UserRepository usuarioRepository;
     private final AppointmentRepository citaRepository;
+    private final LiveEvents liveEvents;
 
     @Transactional
     public void crearParaEmail(String email, String titulo, String mensaje, String tipo, Long citaId) {
@@ -39,6 +40,7 @@ public class NotificationInboxService {
                 .leida(false)
                 .creadaEn(LocalDateTime.now())
                 .build());
+        liveEvents.notifyUser(usuario.getEmail());
     }
 
     public List<NotificationResponse> listar(String email) {
