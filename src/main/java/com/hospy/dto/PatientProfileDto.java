@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDate;
 
+/** JSON patient file. */
 @Data
 @Builder
 public class PatientProfileDto {
