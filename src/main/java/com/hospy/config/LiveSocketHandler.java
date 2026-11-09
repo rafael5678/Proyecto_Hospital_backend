@@ -8,6 +8,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import org.springframework.web.util.UriComponentsBuilder;
 
+/** Handles one live socket connection for a signed-in user. */
 @Component
 @RequiredArgsConstructor
 public class LiveSocketHandler extends TextWebSocketHandler {
