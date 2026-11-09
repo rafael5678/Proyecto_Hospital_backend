@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalTime;
 
+/** JSON work window returned to the portal. */
 @Data
 @Builder
 public class ScheduleResponse {
