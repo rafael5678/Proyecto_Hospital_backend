@@ -6,6 +6,7 @@ import lombok.Data;
 import java.util.List;
 import java.util.Map;
 
+/** JSON admin report totals. */
 @Data
 @Builder
 public class ReportResponse {
