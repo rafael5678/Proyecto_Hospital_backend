@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/** JSON body to book a visit. */
 @Data
 public class AppointmentRequest {
     @NotNull
