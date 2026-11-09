@@ -1,5 +1,6 @@
 package com.hospy.service;
 
+/** Colombian mobile or landline: 10 digits. Empty is allowed. */
 final class ColombianPhone {
 
     private ColombianPhone() {}
