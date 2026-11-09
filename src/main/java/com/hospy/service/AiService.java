@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/** Talks to Gemini and local fallbacks for clinical help. */
 @Slf4j
 @Service
 public class AiService {
