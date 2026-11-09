@@ -4,6 +4,7 @@ import com.hospy.dto.*;
 import com.hospy.service.AiService;
 import com.hospy.service.AppointmentService;
 import com.hospy.service.ReportService;
+import com.hospy.service.SpecialtyService;
 import com.hospy.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class AdminController {
     private final AppointmentService citaService;
     private final ReportService reporteService;
     private final AiService aiService;
+    private final SpecialtyService especialidadService;
 
     @GetMapping("/users")
     public ResponseEntity<List<UserDto>> listUsers() {
@@ -104,6 +106,16 @@ public class AdminController {
     public ResponseEntity<AiMetricsResponse> aiMetrics() {
         return ResponseEntity.ok(reporteService.buildAiMetrics(
                 aiService.hasApiKey(), aiService.versionIa(), aiService.transcriptionStatus()));
+    }
+
+    @GetMapping("/specialties")
+    public ResponseEntity<List<SpecialtyDto>> listSpecialties() {
+        return ResponseEntity.ok(especialidadService.list());
+    }
+
+    @PostMapping("/specialties")
+    public ResponseEntity<SpecialtyDto> createSpecialty(@RequestBody java.util.Map<String, String> body) {
+        return ResponseEntity.ok(especialidadService.create(body.get("nombre")));
     }
 
     @PostMapping("/ai-ping")

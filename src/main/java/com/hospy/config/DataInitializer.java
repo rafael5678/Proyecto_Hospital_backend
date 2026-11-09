@@ -12,6 +12,7 @@ import com.hospy.repository.UserRepository;
 import com.hospy.service.ScheduleService;
 import com.hospy.service.NotificationInboxService;
 import com.hospy.service.ProfileService;
+import com.hospy.service.SpecialtyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,10 +31,12 @@ public class DataInitializer implements CommandLineRunner {
     private final ProfileService perfilService;
     private final ScheduleService horarioService;
     private final NotificationInboxService notificacionInboxService;
+    private final SpecialtyService especialidadService;
 
     @Override
     @Transactional
     public void run(String... args) {
+        especialidadService.ensureDefaults();
         ensureDemoAdmin();
         ensureListedAdminPassword();
         migrateExistingProfiles();
