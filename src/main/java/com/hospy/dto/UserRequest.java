@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
+/** JSON body when an admin creates a user. */
 @Data
 public class UserRequest {
     @NotBlank
