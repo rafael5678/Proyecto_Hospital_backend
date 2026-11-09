@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+/** Emails and notices when a visit is moved. */
 @Slf4j
 @Service
 public class AppointmentNotificationService {
