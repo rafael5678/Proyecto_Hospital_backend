@@ -157,7 +157,7 @@ public class AppointmentService {
         return slots.get(0);
     }
 
-    /** Una sola lectura de horarios y citas; recorre ventanas laborales, no cada media hora del mes. */
+    /** One read of schedules and visits; walks work windows, not every half hour of the month. */
     private List<LocalDateTime> openSlots(Doctor medico, LocalDateTime desde, int max) {
         horarioService.ensureWorkSchedule(medico);
         var schedules = horarioRepository.findByMedicoAndDisponibleTrue(medico);
