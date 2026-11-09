@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+/** Spring Data access for table citas. */
 public interface AppointmentRepository extends JpaRepository<Appointment, Long> {
     List<Appointment> findByPacienteOrderByFechaHoraDesc(Patient paciente);
     List<Appointment> findByMedicoOrderByFechaHoraAsc(Doctor medico);
