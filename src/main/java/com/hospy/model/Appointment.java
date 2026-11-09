@@ -5,6 +5,7 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 
+/** Visit mapped to table citas. fechaHora is Colombia wall clock. */
 @Entity
 @Table(
         name = "citas",
