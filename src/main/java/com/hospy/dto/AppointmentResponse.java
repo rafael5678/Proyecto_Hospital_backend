@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/** JSON visit shown in portal lists. */
 @Data
 @Builder
 public class AppointmentResponse {
