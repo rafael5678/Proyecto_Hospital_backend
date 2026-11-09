@@ -16,6 +16,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.LocalDateTime;
 import java.util.List;
 
+/** Writes and lists in-app bell notices. */
 @Service
 @RequiredArgsConstructor
 public class NotificationInboxService {
