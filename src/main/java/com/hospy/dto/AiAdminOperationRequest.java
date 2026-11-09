@@ -8,9 +8,9 @@ public class AiAdminOperationRequest {
     @NotBlank
     private String instruccion;
 
-    /** JSON del alta en curso, para completar datos en el siguiente mensaje. */
+    /** JSON of the signup in progress, so the next message can fill missing fields. */
     private String borrador;
 
-    /** Mensajes anteriores del administrador en este mismo registro, en orden. */
+    /** Earlier admin messages in this same registration, in order. */
     private java.util.List<String> historial;
 }
