@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/** JSON visit chat reply. */
 @Data
 @Builder
 @NoArgsConstructor
