@@ -62,6 +62,7 @@ public class SpecialtyService {
     public String tidy(String raw) {
         if (raw == null) return null;
         String limpio = raw.trim().replaceAll("\\s+", " ");
+        limpio = limpio.replaceAll("(?i)^(este\\s+es\\s+(el\\s+)?nombre\\s+de\\s+(la\\s+)?)?(la\\s+)?(especializaci[oó]n|especialidad)\\s*[:\\-]?\\s*", "");
         limpio = limpio.replaceAll("(?i)^(se llama|llamada|llamado|es|de|del)\\s+", "");
         limpio = limpio.replaceAll("[.。]+$", "").trim();
         if (limpio.length() < 3 || limpio.length() > 60) return null;

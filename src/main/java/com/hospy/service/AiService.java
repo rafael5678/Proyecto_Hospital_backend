@@ -1340,20 +1340,32 @@ public class AiService {
         return ESPECIALIDADES_ADMIN;
     }
 
+    private boolean looksLikePersonForm(String texto) {
+        String t = sinAcentoAdmin(texto == null ? "" : texto).toLowerCase();
+        int n = 0;
+        if (t.contains("@") || t.contains("correo") || t.contains("gmail")) n++;
+        if (t.contains("contrasena") || t.contains("clave") || t.contains("password")) n++;
+        if (t.contains("licencia")) n++;
+        if (t.contains("telefono") || t.contains("celular")) n++;
+        if (t.contains("horario") || t.contains("lunes")) n++;
+        if (t.contains("nombre completo") || t.contains("documento")) n++;
+        if (t.contains("experiencia")) n++;
+        return n >= 2;
+    }
+
     private AiAdminOperationResponse specialtyRegistration(String instruccion, AiAdminOperationResponse previo) {
         String plano = sinAcentoAdmin(instruccion).toLowerCase();
         boolean pide = plano.contains("especializ") || plano.contains("especialidad");
-        if (isNewRegistration(instruccion) && !pide) return null;
+        if (looksLikePersonForm(instruccion) || isNewRegistration(instruccion)) return null;
         boolean sigue = previo != null && "PREGUNTAR_ESPECIALIDAD".equals(previo.getAccion());
         boolean crear = plano.contains("crea") || plano.contains("agreg") || plano.contains("nueva")
                 || plano.contains("quiero") || plano.contains("registr") || plano.contains("anade")
                 || plano.contains("ponme") || plano.contains("mete");
         if (!sigue && !pide) return null;
-        if (!sigue && pide && !crear && (plano.contains("paciente") || plano.contains(" medico") || plano.contains("doctor"))) {
-            return null;
-        }
+        if (!sigue && pide && !crear) return null;
         String nombre = specialtyService.tidy(nameAfterSpecialtyWord(instruccion));
         if (nombre == null && sigue && !pide) nombre = specialtyService.tidy(instruccion);
+        if (nombre == null && sigue) nombre = specialtyService.tidy(instruccion);
         if (nombre == null) {
             AiAdminOperationResponse r = copyDraft(previo);
             r.setAccion("PREGUNTAR_ESPECIALIDAD");
@@ -1396,7 +1408,7 @@ public class AiService {
 
     private String nameAfterSpecialtyWord(String texto) {
         if (texto == null) return null;
-        Matcher m = Pattern.compile("(?i)(?:especializaci[oó]n|especialidad)\\s+(?:se\\s+llama\\s+|llamada\\s+|es\\s+|de\\s+|:\\s*)?([\\p{L}][\\p{L} .'-]{2,60})").matcher(texto);
+        Matcher m = Pattern.compile("(?i)(?:especializaci[oó]n|especialidad)\\s*[:\\-]?\\s*(?:se\\s+llama\\s+|llamada\\s+|es\\s+|de\\s+)?([\\p{L}][\\p{L} .'-]{2,80})").matcher(texto);
         String hallado = null;
         while (m.find()) hallado = m.group(1);
         if (hallado == null) return null;
