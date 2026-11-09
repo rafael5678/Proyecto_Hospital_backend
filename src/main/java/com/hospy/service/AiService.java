@@ -1520,7 +1520,7 @@ public class AiService {
                 "\nDieta habitual: " + (req.getDietaHabitual() == null ? "no informada" : String.join(", ", req.getDietaHabitual())) +
                 "\nSuplementos: " + (req.getSuplementos() == null ? "ninguno" : String.join(", ", req.getSuplementos()));
 
-        Optional<String> llm = callLlm(system, user);
+        Optional<String> llm = callLlm(system, user, true, 900);
         if (llm.isEmpty()) return datasets.interactions(req);
         try {
             AiInteractionResponse r = mapper.readValue(llm.get(), AiInteractionResponse.class);
@@ -1616,7 +1616,7 @@ public class AiService {
                 " | Ciudad de Colombia: " + nvl(req.getCiudad()) +
                 " | Devuelve 4 lugares distintos de esa ciudad, con el más barato primero.";
 
-        Optional<String> llm = callLlm(system, user);
+        Optional<String> llm = callLlm(system, user, true, 900);
         if (llm.isEmpty()) return preciosMock(req);
         try {
             AiPricesResponse r = mapper.readValue(llm.get(), AiPricesResponse.class);
