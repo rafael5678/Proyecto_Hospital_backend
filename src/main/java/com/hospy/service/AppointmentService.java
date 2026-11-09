@@ -334,7 +334,11 @@ public class AppointmentService {
             throw new RuntimeException("Elige un medicamento o escribe qué debe hacer el paciente.");
         }
         cita.setEstado(AppointmentStatus.COMPLETADA);
-        cita.setConcluidaEn(ColombiaTime.now());
+        LocalDateTime hecha = ColombiaTime.now().withSecond(0).withNano(0);
+        cita.setConcluidaEn(hecha);
+        if (cita.getFechaHora() == null || !cita.getFechaHora().isBefore(hecha)) {
+            cita.setFechaHora(hecha);
+        }
         cita.setReceta(medicamentos);
         citaRepository.save(cita);
         String medico = cita.getMedico().getUsuario().getNombre();
