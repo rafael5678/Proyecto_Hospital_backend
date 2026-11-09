@@ -142,8 +142,7 @@ public class AppointmentService {
             slots.add(SlotResponse.builder()
                     .fechaHora(slot)
                     .dia(ScheduleService.dayName(slot.getDayOfWeek().getValue()))
-                    .etiqueta(ScheduleService.dayName(slot.getDayOfWeek().getValue())
-                            + " " + slot.toLocalDate() + " · " + slot.toLocalTime().withSecond(0).withNano(0))
+                    .etiqueta(ColombiaTime.slotLabel(slot))
                     .ocupadoMenorPrioridad(false)
                     .build());
         }
