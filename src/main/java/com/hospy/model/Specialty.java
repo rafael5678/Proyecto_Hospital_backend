@@ -3,6 +3,7 @@ package com.hospy.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+/** Specialty catalog row mapped to table especialidades. */
 @Entity
 @Table(name = "especialidades")
 @Getter
