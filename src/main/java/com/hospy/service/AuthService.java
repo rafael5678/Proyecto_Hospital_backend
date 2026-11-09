@@ -13,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** Register and login. Role on the stored user picks the portal. */
 @Service
 @RequiredArgsConstructor
 public class AuthService {
