@@ -23,19 +23,19 @@ public class AiSoapResponse {
 
     private String procedimientosSugeridos;
 
-    /** Qué le pasa al paciente, escrito para el médico y no como el aviso del triaje. */
+    /** What is going on, written for the doctor, not as the triage notice. */
     private String resumenParaMedico;
 
-    /** Qué revisar y decidir durante la cita. */
+    /** What to review and decide during the visit. */
     private String enfoqueEnConsulta;
 
-    /** Una pregunta por línea. */
+    /** One suggested question per line. */
     private String preguntasSugeridas;
 
-    /** Una opción por línea. El médico elige. */
+    /** One option per line. The doctor chooses. */
     private String medicamentosSugeridos;
 
-    /** Ejercicio, cuidados en casa y cuándo volver. */
+    /** Home care, exercise, and when to come back. */
     private String cuidados;
 
     private Boolean modoDemo;
