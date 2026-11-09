@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/** JSON bell notice. */
 @Data
 @Builder
 public class NotificationResponse {
