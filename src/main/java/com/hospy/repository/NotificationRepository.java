@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
+/** Spring Data access for table notificaciones. */
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
     List<Notification> findByUsuarioOrderByCreadaEnDesc(User usuario);
     long countByUsuarioAndLeidaFalse(User usuario);
