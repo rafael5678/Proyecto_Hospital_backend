@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
+/** Login account mapped to table usuarios. */
 @Entity
 @Table(name = "usuarios")
 @Getter
