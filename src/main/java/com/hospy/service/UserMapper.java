@@ -56,7 +56,7 @@ public final class UserMapper {
         return dto;
     }
 
-    /** Para HU-10: info del paciente en cita */
+    /** Patient snapshot attached to a visit. */
     public static UserDto fromPacientePerfil(Patient p) {
         return fromPaciente(p);
     }
