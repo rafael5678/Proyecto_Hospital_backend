@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 
+/** Admin user list, create, edit, and activate. */
 @Service
 @RequiredArgsConstructor
 public class UserService {
