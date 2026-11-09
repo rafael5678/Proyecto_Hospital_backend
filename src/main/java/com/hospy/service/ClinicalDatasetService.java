@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+/** Local clinical datasets used when Gemini is down. */
 @Slf4j
 @Service
 public class ClinicalDatasetService {
