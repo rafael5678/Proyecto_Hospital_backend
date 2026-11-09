@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hospy.dto.*;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -48,6 +49,9 @@ public class AiService {
     private String geminiLightModel;
 
     private final Map<String, Long> modeloAgotadoHasta = new java.util.concurrent.ConcurrentHashMap<>();
+
+    @Autowired
+    private SpecialtyService specialtyService;
 
     @Value("${ai.gemini.url:https://generativelanguage.googleapis.com/v1beta/models}")
     private String geminiBaseUrl;
@@ -543,6 +547,9 @@ public class AiService {
         String instruccion = req.getInstruccion() == null ? "" : req.getInstruccion().trim();
         AiAdminOperationResponse previo = readDraft(req.getBorrador());
         if (shouldRestartRegistration(instruccion, previo)) previo = null;
+        AiAdminOperationResponse especialidadNueva = specialtyRegistration(instruccion, previo);
+        if (especialidadNueva != null) return especialidadNueva;
+        String catalogo = String.join(", ", catalogNames());
         final String system = """
                 Eres Hospy y registras médicos y pacientes. Lees español natural, aunque venga incompleto o desordenado.
                 El texto puede venir de voz: tiene muletillas (ah, eh, bueno, listo), repeticiones y palabras cortadas. Ignóralas.
@@ -564,10 +571,8 @@ public class AiService {
                 Conserva el borrador. El mensaje nuevo solo agrega o corrige.
                 Si ya dijo que es paciente, accion=CREAR_PACIENTE. Si es médico, doctor o especialista, accion=CREAR_MEDICO.
                 Si pide cancelar, accion=INFO.
-                Especialidades válidas: Medicina General, Cardiología, Neurología, Dermatología, Traumatología,
-                Ortopedia, Pediatría, Ginecología, Oftalmología, Otorrinolaringología, Gastroenterología,
-                Endocrinología, Urología, Psiquiatría, Neumología, Medicina Interna, Reumatología, Oncología,
-                Nefrología, Infectología.
+                Especialidades válidas: """ + catalogo + """
+                Si pide crear una especialización, eso no registra un médico ni un paciente.
                 diasAtencion usa 1=lunes … 7=domingo, separados por coma. Horas en HH:mm.
                 Si hay dos jornadas, llena horaInicio2 y horaFin2. passwordSugerida es solo la clave que él escribió.
                 Devuelve SOLO JSON:
@@ -1100,7 +1105,7 @@ public class AiService {
         String n = sinAcentoAdmin(texto).toLowerCase();
         String mejor = null;
         int mejorLargo = 0;
-        for (String especialidad : ESPECIALIDADES_ADMIN) {
+        for (String especialidad : catalogNames()) {
             String e = sinAcentoAdmin(especialidad).toLowerCase();
             if (n.contains(e) && e.length() > mejorLargo) {
                 mejor = especialidad;
@@ -1241,8 +1246,13 @@ public class AiService {
         if (medico) {
             r.setAccion("CREAR_MEDICO");
             if (esp == null) {
+                String escrita = r.getEspecialidad() == null ? "" : r.getEspecialidad().trim();
                 r.setEspecialidad(null);
-                faltan.add("la especialidad");
+                if (escrita.length() >= 3 && escrita.length() <= 40) {
+                    faltan.add("una especialización registrada («" + escrita + "» no está; créala en este chat)");
+                } else {
+                    faltan.add("la especialidad");
+                }
             }
             if (r.getAnosExperiencia() == null || r.getAnosExperiencia() < 0 || r.getAnosExperiencia() > 70) {
                 faltan.add("los años de experiencia");
@@ -1310,13 +1320,82 @@ public class AiService {
         if (valor == null || valor.isBlank()) return null;
         String n = sinAcentoAdmin(valor).toLowerCase();
         String mejor = null;
-        for (String especialidad : ESPECIALIDADES_ADMIN) {
+        for (String especialidad : catalogNames()) {
             String e = sinAcentoAdmin(especialidad).toLowerCase();
             if (n.equals(e)) return especialidad;
             if (n.contains(e)) return especialidad;
             if (e.contains(n) && n.length() >= 5) mejor = especialidad;
         }
         return mejor;
+    }
+
+    private List<String> catalogNames() {
+        try {
+            List<String> nombres = specialtyService.names();
+            if (nombres != null && !nombres.isEmpty()) return nombres;
+        } catch (Exception ex) {
+            log.warn("No se pudo leer el catálogo de especializaciones: {}", ex.getMessage());
+        }
+        return ESPECIALIDADES_ADMIN;
+    }
+
+    private AiAdminOperationResponse specialtyRegistration(String instruccion, AiAdminOperationResponse previo) {
+        if (isNewRegistration(instruccion)) return null;
+        String plano = sinAcentoAdmin(instruccion).toLowerCase();
+        boolean sigue = previo != null && "PREGUNTAR_ESPECIALIDAD".equals(previo.getAccion());
+        boolean pide = plano.contains("especialidad") || plano.contains("especializacion");
+        boolean crear = plano.contains("crea") || plano.contains("agreg") || plano.contains("nueva")
+                || plano.contains("quiero") || plano.contains("registr") || plano.contains("anade");
+        if (!sigue && !(pide && crear)) return null;
+        String nombre = specialtyService.tidy(nameAfterSpecialtyWord(instruccion));
+        if (nombre == null && sigue && !pide) nombre = specialtyService.tidy(instruccion);
+        if (nombre == null) {
+            AiAdminOperationResponse r = copyDraft(previo);
+            r.setAccion("PREGUNTAR_ESPECIALIDAD");
+            r.setMensaje("¿Cómo se llama la especialización?");
+            return r;
+        }
+        try {
+            SpecialtyDto creada = specialtyService.create(nombre);
+            String finalNombre = creada.getNombre();
+            AiAdminOperationResponse r = copyDraft(previo);
+            r.setEspecialidad(finalNombre);
+            boolean siguePersona = previo != null && !enBlanco(previo.getNombre());
+            if (siguePersona) {
+                r.setAccion("PREGUNTAR");
+                r.setMensaje((creada.isYaExistia()
+                        ? finalNombre + " ya estaba en el listado."
+                        : "Listo, creé la especialización " + finalNombre + ".")
+                        + " Ya la puedes usar para el médico.");
+            } else {
+                r.setAccion("INFO");
+                r.setNombre(null);
+                r.setMensaje(creada.isYaExistia()
+                        ? finalNombre + " ya estaba creada. Ya aparece al registrar o editar un médico."
+                        : "Listo, creé la especialización " + finalNombre + ". Ya aparece al registrar o editar un médico.");
+            }
+            return r;
+        } catch (RuntimeException ex) {
+            AiAdminOperationResponse r = copyDraft(previo);
+            r.setAccion("PREGUNTAR_ESPECIALIDAD");
+            r.setMensaje(ex.getMessage() + " ¿Cómo se llama la especialización?");
+            return r;
+        }
+    }
+
+    private AiAdminOperationResponse copyDraft(AiAdminOperationResponse previo) {
+        if (previo == null) return new AiAdminOperationResponse();
+        AiAdminOperationResponse copia = readDraft(writeDraft(previo));
+        return copia == null ? new AiAdminOperationResponse() : copia;
+    }
+
+    private String nameAfterSpecialtyWord(String texto) {
+        if (texto == null) return null;
+        Matcher m = Pattern.compile("(?i)(?:especializaci[oó]n|especialidad)\\s+(?:se\\s+llama\\s+|llamada\\s+|es\\s+|de\\s+|:\\s*)?([\\p{L}][\\p{L} .'-]{2,60})").matcher(texto);
+        String hallado = null;
+        while (m.find()) hallado = m.group(1);
+        if (hallado == null) return null;
+        return hallado.replaceAll("(?i)\\s+(para|del|de)\\s+(los\\s+|las\\s+)?m[eé]dicos.*$", "").trim();
     }
 
     private String extraerGrupo(String texto, String regex) {
