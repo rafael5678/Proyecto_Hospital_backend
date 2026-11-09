@@ -5,6 +5,7 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 
+/** Bell notice mapped to table notificaciones. */
 @Entity
 @Table(
         name = "notificaciones",
