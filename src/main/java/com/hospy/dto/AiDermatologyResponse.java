@@ -19,7 +19,7 @@ public class AiDermatologyResponse {
 
     private Double scoreRiesgo;
 
-    /** Texto clínico para el paciente: por qué ese nivel, sin jerga de datasets. */
+    /** Patient-facing clinical text: why that risk level, without dataset jargon. */
     private String explicacion;
 
     private List<String> diagnosticosDiferenciales;
