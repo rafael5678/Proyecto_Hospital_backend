@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/** JSON body for the skin photo review. */
 @Data
 @Builder
 @NoArgsConstructor
