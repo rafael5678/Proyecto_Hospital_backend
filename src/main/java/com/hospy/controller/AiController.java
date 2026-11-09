@@ -12,6 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 
+/** HTTP API for triage, consult, pharmacy, and SOAP. */
 @RestController
 @RequestMapping("/api/ai")
 @RequiredArgsConstructor
