@@ -3,6 +3,7 @@ package com.hospy.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+/** Admin profile mapped to table administradores. */
 @Entity
 @Table(name = "administradores")
 @Getter
