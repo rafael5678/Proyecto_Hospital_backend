@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 public class AppointmentRequest {
     @NotNull
     private Long medicoId;
-    /** Si falta, la aplicación asigna el primer cupo laboral del médico. */
+    /** If missing, the app assigns the doctor's next open work slot. */
     private LocalDateTime fechaHora;
     private String motivo;
     private String notas;
