@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/** JSON reply for Registro Hospy chat. */
 @Data
 @Builder
 @NoArgsConstructor
