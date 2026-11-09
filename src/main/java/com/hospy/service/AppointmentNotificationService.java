@@ -140,7 +140,7 @@ public class AppointmentNotificationService {
 
     private static String nvl(String s) { return s == null || s.isBlank() ? "no informado" : s; }
 
-    /** Avisa solo al paciente cuya cita se movió por otro caso más urgente. */
+    /** Notifies only the patient whose visit was moved for a more urgent case. */
     public NotificationResult notifyReprioritization(Appointment citaDesplazada, LocalDateTime fechaAnterior,
                                                           int prioridadNuevoPaciente, String severidadNuevo) {
         String asuntoPaciente = "Tu cita médica fue reprogramada";
