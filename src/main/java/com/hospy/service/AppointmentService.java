@@ -24,6 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/** Create, accept, reject, and finish visits. */
 @Service
 @RequiredArgsConstructor
 public class AppointmentService {
