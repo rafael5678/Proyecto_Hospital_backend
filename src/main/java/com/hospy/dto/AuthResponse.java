@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 
+/** JSON returned after a successful login. */
 @Data
 @Builder
 @AllArgsConstructor
