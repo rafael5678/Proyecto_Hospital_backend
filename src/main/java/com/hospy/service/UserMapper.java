@@ -3,6 +3,7 @@ package com.hospy.service;
 import com.hospy.dto.UserDto;
 import com.hospy.model.*;
 
+/** Maps User entities to JSON the portals already expect. */
 public final class UserMapper {
 
     private UserMapper() {}
