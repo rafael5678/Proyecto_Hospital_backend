@@ -5,6 +5,7 @@ import lombok.*;
 
 import java.time.LocalTime;
 
+/** Weekly work window mapped to table horarios. */
 @Entity
 @Table(
         name = "horarios",
