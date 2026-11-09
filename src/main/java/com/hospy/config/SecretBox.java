@@ -13,7 +13,7 @@ import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
 
-/** Guarda la clave de ingreso cifrada para que solo el administrador pueda leerla. El login sigue usando BCrypt. */
+/** Stores the login secret encrypted so only an admin can read it. Login still uses BCrypt. */
 @Component
 public class SecretBox {
 

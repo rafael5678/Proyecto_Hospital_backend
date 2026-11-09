@@ -90,7 +90,7 @@ public class AuthService {
         return value != null && value.chars().anyMatch(Character::isWhitespace);
     }
 
-    /** Admin demo también entra con usuario "admin"; médico demo con "doctor". */
+    /** Demo admin also signs in as "admin"; demo doctor as "doctor". */
     private String resolveLoginEmail(String identificador, String rol) {
         if (identificador == null) {
             return "";
