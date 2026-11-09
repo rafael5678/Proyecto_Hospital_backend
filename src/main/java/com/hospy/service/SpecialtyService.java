@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
+/** Specialty catalog used by Registro Hospy and doctor forms. */
 @Service
 @RequiredArgsConstructor
 public class SpecialtyService {
