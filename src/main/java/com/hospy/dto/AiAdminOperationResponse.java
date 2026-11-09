@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AiAdminOperationResponse {
-    /** CREAR_MEDICO | CREAR_PACIENTE | PREGUNTAR | INFO */
+    /** CREAR_MEDICO | CREAR_PACIENTE | PREGUNTAR | INFO. Visible Spanish action codes stay. */
     private String accion;
     private String nombre;
     private String email;
@@ -33,7 +33,7 @@ public class AiAdminOperationResponse {
     private String contactoEmergencia;
     private String telefonoEmergencia;
     private String observaciones;
-    /** Días 1=lunes … 7=domingo, separados por coma. */
+    /** Days 1=Monday … 7=Sunday, comma-separated. */
     private String diasAtencion;
     private String horaInicio;
     private String horaFin;
