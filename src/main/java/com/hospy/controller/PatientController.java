@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/** HTTP API for the patient portal. */
 @RestController
 @RequestMapping("/api/patient")
 @RequiredArgsConstructor
