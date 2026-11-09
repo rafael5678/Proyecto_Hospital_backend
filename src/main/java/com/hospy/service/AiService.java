@@ -1340,13 +1340,17 @@ public class AiService {
     }
 
     private AiAdminOperationResponse specialtyRegistration(String instruccion, AiAdminOperationResponse previo) {
-        if (isNewRegistration(instruccion)) return null;
         String plano = sinAcentoAdmin(instruccion).toLowerCase();
+        boolean pide = plano.contains("especializ") || plano.contains("especialidad");
+        if (isNewRegistration(instruccion) && !pide) return null;
         boolean sigue = previo != null && "PREGUNTAR_ESPECIALIDAD".equals(previo.getAccion());
-        boolean pide = plano.contains("especialidad") || plano.contains("especializacion");
         boolean crear = plano.contains("crea") || plano.contains("agreg") || plano.contains("nueva")
-                || plano.contains("quiero") || plano.contains("registr") || plano.contains("anade");
-        if (!sigue && !(pide && crear)) return null;
+                || plano.contains("quiero") || plano.contains("registr") || plano.contains("anade")
+                || plano.contains("ponme") || plano.contains("mete");
+        if (!sigue && !pide) return null;
+        if (!sigue && pide && !crear && (plano.contains("paciente") || plano.contains(" medico") || plano.contains("doctor"))) {
+            return null;
+        }
         String nombre = specialtyService.tidy(nameAfterSpecialtyWord(instruccion));
         if (nombre == null && sigue && !pide) nombre = specialtyService.tidy(instruccion);
         if (nombre == null) {
