@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.Map;
 
+/** Turns service errors into JSON the portals already handle. */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
