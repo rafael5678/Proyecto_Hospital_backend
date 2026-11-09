@@ -351,7 +351,7 @@ public class AiService {
         }
     }
 
-    /** 0 = no reintentar. Con la cuota agotada (429) esperar no sirve: se pasa al siguiente modelo o al respaldo. */
+    /** 0 means do not wait. A 429 quota miss should skip to the next model or the fallback. */
     private long suggestedGeminiWait(int status, String cuerpo) {
         if (status == 503) return 1500;
         if (status != 429) return 0;
