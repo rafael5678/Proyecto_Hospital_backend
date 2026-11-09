@@ -3,6 +3,7 @@ package com.hospy;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+/** Spring Boot entry point for the Hospy API. */
 @SpringBootApplication
 public class HospitalApplication {
 
