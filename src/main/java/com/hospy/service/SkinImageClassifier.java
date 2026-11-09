@@ -19,6 +19,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 
+/** Local skin image classifier used beside Gemini. */
 @Slf4j
 @Service
 public class SkinImageClassifier {
