@@ -26,7 +26,7 @@ public class AiPricesResponse {
 
     private String recomendacion;
 
-    /** Caja o presentación más habitual cuando el médico no la escribió. */
+    /** Usual box or presentation when the doctor did not write one. */
     private String presentacionEstimada;
 
     private Boolean modoDemo;
@@ -40,7 +40,7 @@ public class AiPricesResponse {
         private Double precio;
         private String disponibilidad;
         private String url;
-        /** Sitio de la ciudad: centro comercial, barrio o avenida. */
+        /** Place in the city: mall, neighborhood, or avenue. */
         private String lugar;
         private String presentacion;
     }
