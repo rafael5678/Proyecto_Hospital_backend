@@ -8,6 +8,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/** JSON body to move a visit. */
 @Data
 public class RescheduleAppointmentRequest {
     @NotNull
