@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Map;
 
+/** Creates and reads the login JWT. */
 @Service
 public class JwtService {
 
