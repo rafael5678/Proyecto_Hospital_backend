@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/** JSON SOAP helper the doctor portal already reads. */
 @Data
 @Builder
 @NoArgsConstructor
