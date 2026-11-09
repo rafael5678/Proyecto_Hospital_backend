@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.util.Map;
 
+/** JSON admin AI metrics. */
 @Data
 @Builder
 public class AiMetricsResponse {
