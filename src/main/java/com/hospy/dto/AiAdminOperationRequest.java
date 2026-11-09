@@ -3,6 +3,7 @@ package com.hospy.dto;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
+/** JSON body for Registro Hospy chat. */
 @Data
 public class AiAdminOperationRequest {
     @NotBlank
