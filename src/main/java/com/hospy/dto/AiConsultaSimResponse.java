@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 public class AiConsultaSimResponse {
     private String dicePaciente;
     private String pistaParaElMedico;
-    /** Una opción por línea. */
+    /** One medication option per line. */
     private String medicamentosSugeridos;
     private String cuidados;
     private Boolean modoDemo;
