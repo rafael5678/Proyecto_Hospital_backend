@@ -27,7 +27,7 @@ public class ProfileService {
             case PACIENTE -> pacienteRepository.save(Patient.builder()
                     .usuario(usuario)
                     .documento(ColombianId.normalize(req.getDocumento()))
-                    .fechaNacimiento(parseDate(req.getFechaNacimiento()))
+                    .fechaNacimiento(ColombianBirthDate.requireAllowed(parseDate(req.getFechaNacimiento())))
                     .genero(req.getGenero())
                     .tipoSangre(req.getTipoSangre())
                     .direccion(req.getDireccion())
@@ -64,7 +64,7 @@ public class ProfileService {
             pacienteRepository.save(Patient.builder()
                     .usuario(usuario)
                     .documento(ColombianId.normalize(req.getDocumento()))
-                    .fechaNacimiento(req.getFechaNacimiento())
+                    .fechaNacimiento(ColombianBirthDate.requireAllowed(req.getFechaNacimiento()))
                     .genero(req.getGenero())
                     .tipoSangre(req.getTipoSangre())
                     .direccion(req.getDireccion())
@@ -84,7 +84,7 @@ public class ProfileService {
                 var p = pacienteRepository.findByUsuarioId(usuario.getId())
                         .orElseGet(() -> Patient.builder().usuario(usuario).build());
                 if (req.getDocumento() != null) p.setDocumento(ColombianId.normalize(req.getDocumento()));
-                if (req.getFechaNacimiento() != null) p.setFechaNacimiento(parseDate(req.getFechaNacimiento()));
+                if (req.getFechaNacimiento() != null) p.setFechaNacimiento(ColombianBirthDate.requireAllowed(parseDate(req.getFechaNacimiento())));
                 if (req.getGenero() != null) p.setGenero(req.getGenero());
                 if (req.getTipoSangre() != null) p.setTipoSangre(req.getTipoSangre());
                 if (req.getDireccion() != null) p.setDireccion(req.getDireccion());

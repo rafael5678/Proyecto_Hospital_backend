@@ -34,7 +34,7 @@ public class PatientService {
         if (dto.getNombre() != null) u.setNombre(dto.getNombre());
         if (dto.getTelefono() != null) u.setTelefono(ColombianPhone.normalize(dto.getTelefono(), "El teléfono"));
         if (dto.getDocumento() != null) p.setDocumento(ColombianId.normalize(dto.getDocumento()));
-        if (dto.getFechaNacimiento() != null) p.setFechaNacimiento(dto.getFechaNacimiento());
+        if (dto.getFechaNacimiento() != null) p.setFechaNacimiento(ColombianBirthDate.requireAllowed(dto.getFechaNacimiento()));
         if (dto.getGenero() != null) p.setGenero(dto.getGenero());
         if (dto.getTipoSangre() != null) p.setTipoSangre(dto.getTipoSangre());
         if (dto.getDireccion() != null) p.setDireccion(dto.getDireccion());
