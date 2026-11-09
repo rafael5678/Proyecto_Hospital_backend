@@ -3,6 +3,7 @@ package com.hospy.dto;
 import lombok.Builder;
 import lombok.Data;
 
+/** JSON specialty catalog row. */
 @Data
 @Builder
 public class SpecialtyDto {
