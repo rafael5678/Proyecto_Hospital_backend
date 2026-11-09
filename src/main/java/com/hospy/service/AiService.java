@@ -82,6 +82,7 @@ public class AiService {
         this.mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
+                .version(HttpClient.Version.HTTP_2)
                 .build();
     }
 
@@ -96,6 +97,23 @@ public class AiService {
     @PostConstruct
     void logEstadoGemini() {
         log.info("Gemini: {} modelo={}", hasGemini() ? "clave presente" : "SIN CLAVE", geminiModel);
+        Thread t = new Thread(() -> {
+            try {
+                warmupConsult();
+            } catch (Exception ignored) {
+                /* first consult still works without this handshake */
+            }
+        }, "hospy-gemini-warmup");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /** Tiny light-model call so TLS and Gemini are warm before the first consult question. */
+    public boolean warmupConsult() {
+        if (!hasGemini()) return false;
+        String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
+        return callGeminiModel(modelo, "Responde únicamente con la palabra LISTO.", "LISTO",
+                null, null, false, 8, 12, false).isPresent();
     }
 
     public boolean hasOpenAi() {
@@ -274,6 +292,28 @@ public class AiService {
         return modelos;
     }
 
+    /** Consult stays on the light model plus one backup so the first question is not a six-model walk. */
+    private List<String> geminiModelsConsult() {
+        List<String> modelos = new ArrayList<>();
+        addModel(modelos, geminiLightModel);
+        addModel(modelos, "gemini-3.6-flash");
+        return modelos;
+    }
+
+    private Optional<String> callLlmConsult(String systemPrompt, String userPrompt, int maxTokens) {
+        if (hasGemini()) {
+            long ahora = System.currentTimeMillis();
+            for (String modelo : geminiModelsConsult()) {
+                if (modeloAgotadoHasta.getOrDefault(modelo, 0L) > ahora) continue;
+                Optional<String> out = callGeminiModel(modelo, systemPrompt, userPrompt, null, null, true,
+                        maxTokens, 20, false);
+                if (out.isPresent()) return out;
+            }
+        }
+        if (hasOpenAi()) return callOpenAi(systemPrompt, userPrompt);
+        return Optional.empty();
+    }
+
     private static void addModel(List<String> modelos, String modelo) {
         if (modelo == null) return;
         String t = modelo.trim();
@@ -293,6 +333,13 @@ public class AiService {
 
     private Optional<String> callGeminiModel(String modelo, String systemPrompt, String userPrompt,
                                                String mimeType, String base64, boolean json, int maxTokens) {
+        return callGeminiModel(modelo, systemPrompt, userPrompt, mimeType, base64, json, maxTokens,
+                Math.max(timeout == null ? 30 : timeout, 30), true);
+    }
+
+    private Optional<String> callGeminiModel(String modelo, String systemPrompt, String userPrompt,
+                                               String mimeType, String base64, boolean json, int maxTokens,
+                                               int timeoutSeconds, boolean retryOnLimit) {
         try {
             List<Map<String, Object>> parts = new ArrayList<>();
             parts.add(Map.of("text", userPrompt));
@@ -319,12 +366,12 @@ public class AiService {
             String url = geminiBaseUrl + "/" + modelo + ":generateContent?key=" + geminiKey;
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(Math.max(timeout, 30)))
+                    .timeout(Duration.ofSeconds(Math.max(timeoutSeconds, 8)))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8))
                     .build();
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            long espera = suggestedGeminiWait(resp.statusCode(), resp.body());
+            long espera = retryOnLimit ? suggestedGeminiWait(resp.statusCode(), resp.body()) : 0;
             if (espera > 0) {
                 log.info("Gemini {} status={}, reintento en {} ms", modelo, resp.statusCode(), espera);
                 Thread.sleep(espera);
@@ -1483,13 +1530,17 @@ public class AiService {
         if (contexto.length() > 1000) {
             contexto = contexto.substring(0, 450) + "\n...\n" + contexto.substring(contexto.length() - 450);
         }
+        boolean primerTurno = dialogo.lines().filter(l -> l.startsWith("Médico:")).count() <= 1;
         String user = "Paciente: " + nvl(req.getNombrePaciente()) +
                 "\nMotivo: " + nvl(req.getMotivo()) +
                 "\nContexto:\n" + contexto +
                 "\nDiálogo previo:\n" + (dialogo.isBlank() ? "aún no empieza" : dialogo) +
                 "\nPregunta del médico: " + (req.getPregunta() == null || req.getPregunta().isBlank()
                 ? "saluda y cuenta con tus palabras lo que te trajo" : req.getPregunta());
-        Optional<String> llm = callLlm(system, user, true, 1200);
+        if (primerTurno) {
+            user += "\nEste es el primer turno: deja medicamentosSugeridos y cuidados vacíos. Habla solo como paciente.";
+        }
+        Optional<String> llm = callLlmConsult(system, user, primerTurno ? 500 : 900);
         if (llm.isEmpty()) return consultaMock(req);
         try {
             AiConsultaSimResponse r = leerConsulta(llm.get());

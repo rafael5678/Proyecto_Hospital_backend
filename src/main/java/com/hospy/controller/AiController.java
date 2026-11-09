@@ -56,6 +56,12 @@ public class AiController {
         return ResponseEntity.ok(aiService.consultaSimulada(req));
     }
 
+    @PostMapping("/warmup")
+    @PreAuthorize("hasAnyRole('MEDICO','ADMIN')")
+    public ResponseEntity<AiWarmupResponse> warmup() {
+        return ResponseEntity.ok(new AiWarmupResponse(aiService.warmupConsult()));
+    }
+
     @PostMapping(value = "/transcribe", consumes = "multipart/form-data")
     @PreAuthorize("hasAnyRole('MEDICO','ADMIN')")
     public ResponseEntity<AiTranscriptionResponse> transcribe(@RequestParam("audio") MultipartFile audio) throws IOException {
@@ -91,4 +97,6 @@ public class AiController {
     }
 
     public record AiStatusResponse(boolean apiKeyActiva, String version) { }
+
+    public record AiWarmupResponse(boolean ok) { }
 }
