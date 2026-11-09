@@ -3,6 +3,7 @@ package com.hospy.dto;
 import lombok.Builder;
 import lombok.Data;
 
+/** JSON home numbers for the patient portal. */
 @Data
 @Builder
 public class PatientDashboardDto {
