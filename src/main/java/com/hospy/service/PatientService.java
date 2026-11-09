@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+/** Patient dashboard, profile, and booking. */
 @Service
 @RequiredArgsConstructor
 public class PatientService {
