@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/** JSON interaction result the portals already read. */
 @Data
 @Builder
 @NoArgsConstructor
