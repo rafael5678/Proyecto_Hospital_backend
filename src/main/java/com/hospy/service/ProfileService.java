@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 
+/** Creates patient, doctor, or admin profile rows. */
 @Service
 @RequiredArgsConstructor
 public class ProfileService {
