@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/** JSON body for drug and food interaction checks. */
 @Data
 @Builder
 @NoArgsConstructor
