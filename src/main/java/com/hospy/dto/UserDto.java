@@ -32,7 +32,7 @@ public class UserDto {
     private String horaFin;
     private String horaInicio2;
     private String horaFin2;
-    /** Solo la llena el listado del administrador. Va cifrada en la base. */
+    /** Filled only on the admin list. Stored encrypted in the database. */
     private String clave;
     private String cargo;
     private String departamento;
