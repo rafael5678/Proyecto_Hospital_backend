@@ -44,7 +44,7 @@ public class AiService {
     @Value("${ai.gemini.fallback-models:gemini-3.8-flash}")
     private String geminiFallbackModels;
 
-    /** Modelo con cuota gratuita mucho mayor (500 al día frente a 20): primero en tareas simples, último respaldo en las demás. */
+    /** Light model with a larger free quota: first on simple tasks, last fallback on the rest. */
     @Value("${ai.gemini.light-model:gemini-3.5-flash-lite}")
     private String geminiLightModel;
 
@@ -107,7 +107,7 @@ public class AiService {
         return "Hospy AI — modo demo local";
     }
 
-    /** Comprueba que Gemini responde. No inventa métricas ni guarda datos. */
+    /** Checks that Gemini answers. Does not invent metrics or persist data. */
     public Map<String, String> pingConnection() {
         Map<String, String> out = new LinkedHashMap<>();
         out.put("modelo", hasGemini() ? geminiModel : versionIa());
