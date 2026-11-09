@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.List;
 
+/** Doctor dashboard, agenda, and consult send. */
 @Service
 @RequiredArgsConstructor
 public class DoctorProfileService {
