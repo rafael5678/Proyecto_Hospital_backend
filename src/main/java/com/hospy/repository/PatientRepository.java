@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
+/** Spring Data access for table pacientes. */
 public interface PatientRepository extends JpaRepository<Patient, Long> {
     Optional<Patient> findByUsuario(User usuario);
     Optional<Patient> findByUsuarioId(Long usuarioId);
