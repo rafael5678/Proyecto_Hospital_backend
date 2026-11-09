@@ -5,6 +5,7 @@ import lombok.*;
 
 import java.time.LocalDate;
 
+/** Patient profile mapped to table pacientes. */
 @Entity
 @Table(name = "pacientes")
 @Getter
