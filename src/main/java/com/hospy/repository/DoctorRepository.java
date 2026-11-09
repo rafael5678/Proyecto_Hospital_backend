@@ -11,6 +11,7 @@ import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 
+/** Spring Data access for table medicos. */
 public interface DoctorRepository extends JpaRepository<Doctor, Long> {
     Optional<Doctor> findByUsuario(User usuario);
     Optional<Doctor> findByUsuarioId(Long usuarioId);
