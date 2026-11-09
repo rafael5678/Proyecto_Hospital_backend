@@ -27,7 +27,7 @@ public class User {
     @Column(nullable = false)
     private String password;
 
-    /** Copia cifrada para el módulo de administrador. No sale en el login. */
+    /** Encrypted copy for the admin module. Not used by login. */
     @JsonIgnore
     @Column(length = 500)
     private String claveCifrada;
