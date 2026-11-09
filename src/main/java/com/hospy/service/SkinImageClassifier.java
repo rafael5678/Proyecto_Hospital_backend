@@ -227,7 +227,7 @@ public class SkinImageClassifier {
         return z;
     }
 
-    /** HSV 0-255, misma fórmula que spark/train_skin_classifier.py */
+    /** HSV 0-255, same formula as spark/train_skin_classifier.py. */
     private static double[] rgbToHsv(int r, int g, int b) {
         double rf = r / 255.0, gf = g / 255.0, bf = b / 255.0;
         double mx = Math.max(rf, Math.max(gf, bf));
