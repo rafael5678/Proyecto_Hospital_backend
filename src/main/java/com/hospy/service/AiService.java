@@ -989,7 +989,7 @@ public class AiService {
         return r;
     }
 
-    /** La última contraseña dicha; si se dictó en grupos de dígitos ("0 27 1") se juntan. */
+    /** Last spoken password; digit groups such as "0 27 1" are joined. */
     private String passwordInText(String original) {
         String conector = "\\s*(?:(?:ser[ií]a|ser[aá]|va\\s+a\\s+ser|queda|es|ponle|pon)\\s*)?[:,]?\\s*";
         Matcher m = Pattern.compile("(?i)(?:clave|contrase[nñ]a|password)" + conector
