@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
+/** Spring Data access for table horarios. */
 public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     List<Schedule> findByMedicoAndDisponibleTrue(Doctor medico);
     List<Schedule> findByMedico(Doctor medico);
