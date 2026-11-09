@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/** HTTP API for the signed-in doctor portal. */
 @RestController
 @RequestMapping("/api/doctor")
 @RequiredArgsConstructor
