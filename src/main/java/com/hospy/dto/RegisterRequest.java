@@ -7,6 +7,7 @@ import lombok.Data;
 
 import java.time.LocalDate;
 
+/** JSON body for public patient sign-up. */
 @Data
 public class RegisterRequest {
     @NotBlank
