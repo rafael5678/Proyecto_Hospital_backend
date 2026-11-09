@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/** JSON body for the SOAP consult helper. */
 @Data
 @Builder
 @NoArgsConstructor
