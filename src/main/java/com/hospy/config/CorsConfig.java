@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+/** Allows the Vercel frontend to call this API. */
 @Configuration
 public class CorsConfig {
 
