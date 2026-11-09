@@ -3,6 +3,7 @@ package com.hospy.service;
 import com.hospy.dto.AppointmentResponse;
 import com.hospy.model.Appointment;
 
+/** Maps Appointment entities to JSON the portals already expect. */
 public final class AppointmentMapper {
 
     private AppointmentMapper() {}
