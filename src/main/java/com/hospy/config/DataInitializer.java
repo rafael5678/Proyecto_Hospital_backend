@@ -105,7 +105,7 @@ public class DataInitializer implements CommandLineRunner {
         });
     }
 
-    /** Deja usable la cuenta con la que entra el administrador. No toca la otra. */
+    /** Keeps the listed admin login usable. Does not touch the other admin. */
     private void ensureListedAdminPassword() {
         usuarioRepository.findByEmailIgnoreCase("juanrafaelcalzada1087@gmail.com").ifPresent(u -> {
             if (u.getRol() != Role.ADMIN) return;
@@ -117,7 +117,7 @@ public class DataInitializer implements CommandLineRunner {
         });
     }
 
-    /** El admin de demo se crea una vez. Si ya existe, no se le pisa la clave. */
+    /** Creates the demo admin once. If it already exists, the password is left alone. */
     private void ensureDemoAdmin() {
         usuarioRepository.findByEmail("admin@hospy.com").ifPresentOrElse(u -> {
             u.setRol(Role.ADMIN);
@@ -173,7 +173,7 @@ public class DataInitializer implements CommandLineRunner {
         });
     }
 
-    /** Migra usuarios viejos que no tenían tabla de perfil */
+    /** Creates a profile row for older users that were missing one. */
     private void migrateExistingProfiles() {
         usuarioRepository.findAll().forEach(u -> {
             UserRequest req = new UserRequest();
