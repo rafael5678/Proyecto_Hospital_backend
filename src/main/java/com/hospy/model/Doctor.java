@@ -3,6 +3,7 @@ package com.hospy.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+/** Doctor profile mapped to table medicos. */
 @Entity
 @Table(name = "medicos")
 @Getter
