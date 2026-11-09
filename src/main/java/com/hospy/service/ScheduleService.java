@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalTime;
 import java.util.List;
 
+/** Weekly work windows and open slots. */
 @Service
 @RequiredArgsConstructor
 public class ScheduleService {
