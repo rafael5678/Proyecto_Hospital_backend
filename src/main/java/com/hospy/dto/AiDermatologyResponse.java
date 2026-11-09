@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/** JSON skin review the portals already read. */
 @Data
 @Builder
 @NoArgsConstructor
