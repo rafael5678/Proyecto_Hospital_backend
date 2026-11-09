@@ -3,6 +3,7 @@ package com.hospy.dto;
 import lombok.Builder;
 import lombok.Data;
 
+/** JSON doctor file. */
 @Data
 @Builder
 public class DoctorProfileDto {
