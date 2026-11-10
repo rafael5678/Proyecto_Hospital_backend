@@ -64,8 +64,12 @@ final class SoapBrief {
 
     private static String summary(Case c) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Trae ").append(c.complaint);
-        if (!c.duration.isBlank()) sb.append(" desde hace ").append(c.duration);
+        sb.append(lead(c.complaint));
+        String dur = cleanDuration(c.duration);
+        String already = (c.complaint + " " + c.story).toLowerCase();
+        if (!dur.isBlank() && !already.contains("desde hace")) {
+            sb.append(" desde hace ").append(dur);
+        }
         sb.append(". ");
         if (c.trauma) {
             sb.append("Relato de golpe con moretón y a veces calambre: encaja con contusión o hematoma de partes blandas; hay que mirar fuerza, movilidad y si el moretón cambia. ");
@@ -197,6 +201,23 @@ final class SoapBrief {
             return clip(t.replaceFirst("(?i)^s[ií]ntomas[^:]*:\\s*", ""), 160);
         }
         return fallback;
+    }
+
+    private static String lead(String complaint) {
+        String t = complaint == null ? "" : complaint.trim();
+        if (t.isBlank()) return "Consulta por este malestar";
+        String low = t.toLowerCase();
+        if (low.startsWith("tengo") || low.startsWith("tiene") || low.startsWith("duele")
+                || low.startsWith("me ") || low.startsWith("trae") || low.startsWith("consulta")) {
+            return Character.toUpperCase(t.charAt(0)) + t.substring(1);
+        }
+        return "Consulta por " + t;
+    }
+
+    private static String cleanDuration(String duration) {
+        if (duration == null) return "";
+        String d = duration.trim().replaceFirst("(?i)^desde hace\\s*", "");
+        return d.replaceAll("(?i)\\bdias\\b", "días");
     }
 
     private static String clip(String s, int n) {
