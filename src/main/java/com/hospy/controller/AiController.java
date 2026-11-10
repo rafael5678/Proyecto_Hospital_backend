@@ -57,7 +57,7 @@ public class AiController {
     }
 
     @PostMapping("/warmup")
-    @PreAuthorize("hasAnyRole('MEDICO','ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<AiWarmupResponse> warmup() {
         return ResponseEntity.ok(new AiWarmupResponse(aiService.warmupConsult()));
     }

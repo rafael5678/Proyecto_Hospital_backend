@@ -117,12 +117,18 @@ public class AiService {
         t.start();
     }
 
-    /** Tiny light-model call so TLS and Gemini are warm before the first consult question. */
+    /** Tiny calls so Gemini and Claude Haiku are warm before the first consult question. */
     public boolean warmupConsult() {
-        if (!hasGemini()) return false;
-        String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
-        return callGeminiModel(modelo, "Responde únicamente con la palabra LISTO.", "LISTO",
-                null, null, false, 8, 12, false).isPresent();
+        boolean listo = false;
+        if (hasGemini()) {
+            String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
+            listo = callGeminiModel(modelo, "Responde únicamente con la palabra LISTO.", "LISTO",
+                    null, null, false, 8, 8, false).isPresent();
+        }
+        if (hasAnthropic()) {
+            listo = callAnthropic("Responde únicamente con la palabra LISTO.", "LISTO", 8).isPresent() || listo;
+        }
+        return listo;
     }
 
     public boolean hasAnthropic() {
@@ -361,19 +367,40 @@ public class AiService {
         return modelos;
     }
 
+    private boolean consultGeminiTired() {
+        long ahora = System.currentTimeMillis();
+        for (String modelo : geminiModelsConsult()) {
+            if (modeloAgotadoHasta.getOrDefault(modelo, 0L) <= ahora) return false;
+        }
+        return !geminiModelsConsult().isEmpty();
+    }
+
     private Optional<String> callLlmConsult(String systemPrompt, String userPrompt, int maxTokens) {
-        if (hasGemini()) {
+        if (hasGemini() && !consultGeminiTired()) {
             long ahora = System.currentTimeMillis();
-            for (String modelo : geminiModelsConsult()) {
+            List<String> modelos = hasAnthropic()
+                    ? List.of(geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel.trim())
+                    : geminiModelsConsult();
+            for (String modelo : modelos) {
+                if (modelo == null || modelo.isBlank()) continue;
                 if (modeloAgotadoHasta.getOrDefault(modelo, 0L) > ahora) continue;
                 Optional<String> out = callGeminiModel(modelo, systemPrompt, userPrompt, null, null, true,
-                        maxTokens, 20, false);
+                        maxTokens, 8, false);
                 if (out.isPresent()) return out;
             }
         }
         if (hasAnthropic()) {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, maxTokens);
             if (claude.isPresent()) return claude;
+        }
+        if (hasGemini()) {
+            long ahora = System.currentTimeMillis();
+            for (String modelo : geminiModelsConsult()) {
+                if (modeloAgotadoHasta.getOrDefault(modelo, 0L) > ahora) continue;
+                Optional<String> out = callGeminiModel(modelo, systemPrompt, userPrompt, null, null, true,
+                        maxTokens, 8, false);
+                if (out.isPresent()) return out;
+            }
         }
         if (hasOpenAi()) return callOpenAi(systemPrompt, userPrompt);
         return Optional.empty();
@@ -447,7 +474,11 @@ public class AiService {
                 log.warn("Gemini {} status={} body={}", modelo, resp.statusCode(), snippet);
                 if (resp.statusCode() == 429) {
                     boolean diaria = resp.body() != null && resp.body().contains("PerDay");
-                    modeloAgotadoHasta.put(modelo, System.currentTimeMillis() + (diaria ? 30 * 60_000L : 60_000L));
+                    long hasta = System.currentTimeMillis() + (diaria ? 30 * 60_000L : 60_000L);
+                    modeloAgotadoHasta.put(modelo, hasta);
+                    if (diaria) {
+                        for (String otro : geminiModelsConsult()) modeloAgotadoHasta.put(otro, hasta);
+                    }
                 }
                 return Optional.empty();
             }
@@ -460,6 +491,10 @@ public class AiService {
             return texto;
         } catch (Exception ex) {
             log.warn("Excepción Gemini {}: {}", modelo, ex.getMessage());
+            String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
+            if (ex instanceof java.net.http.HttpTimeoutException || msg.contains("timed out") || msg.contains("timeout")) {
+                modeloAgotadoHasta.put(modelo, System.currentTimeMillis() + 90_000L);
+            }
             return Optional.empty();
         }
     }
