@@ -432,14 +432,15 @@ public class AiService {
     }
 
     private Optional<String> callLlmConsult(String systemPrompt, String userPrompt, int maxTokens) {
+        int tokens = Math.max(maxTokens, 700);
         if (hasAnthropic()) {
-            Optional<String> claude = callAnthropic(systemPrompt, userPrompt, maxTokens);
+            Optional<String> claude = callAnthropic(systemPrompt, userPrompt, tokens, null, null, 7);
             if (claude.isPresent()) return claude;
         }
         if (hasGemini()) {
             String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
             Optional<String> gemini = callGeminiModel(modelo, systemPrompt, userPrompt, null, null, false,
-                    Math.max(maxTokens, 256), 4, false);
+                    tokens, 6, false);
             if (gemini.isPresent()) return gemini;
         }
         return Optional.empty();
@@ -1679,7 +1680,8 @@ public class AiService {
     public AiConsultaSimResponse consultaSimulada(AiConsultaSimRequest req) {
         final String system = """
                 Eres el paciente en el consultorio. Hablas en primera persona, en español de Colombia, como una persona de verdad.
-                Lee completo lo que acaba de decir el médico y responde ESO, en dos a cuatro frases.
+                Lee completo lo que acaba de decir el médico y responde ESO, en dos a cuatro frases COMPLETAS.
+                Cierra siempre con punto. Nunca dejes una oración a medias (nada de "me ofreció un").
                 Sí o no cuando toque, y un porqué corto.
                 Tu ficha (motivo, alergias, antecedentes) es tu verdad: si pregunta alergias, diles las de la ficha. No niegues lo que ya está escrito.
                 Si pregunta algo que no está en la ficha (medicamento, mamá, té, casa), inventa un dato creíble y quédate con él.
@@ -1699,7 +1701,7 @@ public class AiService {
                 "\nFicha (alergias y relato; no lo niegues):\n" + (ficha.isBlank() ? "sin más dato" : ficha) +
                 "\nConversación:\n" + (reciente.isBlank() ? "recién entra" : reciente) +
                 "\nEl médico dijo: " + pregunta;
-        Optional<String> llm = callLlmConsult(system, user, 400);
+        Optional<String> llm = callLlmConsult(system, user, 800);
         if (llm.isEmpty()) return consultaMock(req);
         return hablarComoPaciente(llm.get(), req);
     }
@@ -1709,7 +1711,10 @@ public class AiService {
         if (t.contains("\"dicePaciente\"")) {
             try {
                 AiConsultaSimResponse r = leerConsulta(t);
-                if (r.getDicePaciente() != null && !r.getDicePaciente().isBlank()) return r;
+                if (r.getDicePaciente() != null && !r.getDicePaciente().isBlank()) {
+                    r.setDicePaciente(completarSiCorto(r.getDicePaciente()));
+                    return r;
+                }
             } catch (Exception ignored) {
                 /* fall through to plain speech */
             }
@@ -1717,6 +1722,7 @@ public class AiService {
         t = t.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "").trim();
         if (t.startsWith("\"") && t.endsWith("\"") && t.length() > 2) t = t.substring(1, t.length() - 1);
         if (t.isBlank()) return consultaMock(req);
+        t = completarSiCorto(t);
         return AiConsultaSimResponse.builder()
                 .dicePaciente(t)
                 .pistaParaElMedico("")
@@ -1724,6 +1730,22 @@ public class AiService {
                 .cuidados("")
                 .modoDemo(false)
                 .build();
+    }
+
+    private boolean fraseCerrada(String t) {
+        if (t == null || t.isBlank()) return true;
+        char u = t.charAt(t.length() - 1);
+        return u == '.' || u == '!' || u == '?' || u == '…' || u == '"' || u == '»';
+    }
+
+    private String completarSiCorto(String t) {
+        if (fraseCerrada(t)) return t;
+        Optional<String> extra = callAnthropic(
+                "Eres el mismo paciente. El texto se cortó. Devuelve TODO el texto otra vez, con la última frase terminada en punto. No agregues un tema nuevo.",
+                t, 200, null, null, 4);
+        if (extra.isEmpty()) return t;
+        String n = extra.get().trim();
+        return n.isBlank() ? t : n;
     }
 
     private AiSoapResponse soapMock(AiSoapRequest req) {
