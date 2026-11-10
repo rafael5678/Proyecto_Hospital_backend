@@ -122,15 +122,19 @@ public class AiService {
         t.start();
     }
 
-    /** Tiny Haiku call so TLS is warm before the first question. Gemini stays as backup only. */
+    /** Warms Haiku for the chat and Gemini light for the doctor's SOAP summary. */
     public boolean warmupConsult() {
+        boolean haiku = false;
         if (hasAnthropic()) {
-            return callAnthropic("Responde únicamente con la palabra LISTO.", "LISTO", 64).isPresent();
+            haiku = callAnthropic("Responde únicamente con la palabra LISTO.", "LISTO", 64).isPresent();
         }
-        if (!hasGemini()) return false;
-        String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
-        return callGeminiModel(modelo, "Responde únicamente con la palabra LISTO.", "LISTO",
-                null, null, false, 8, 8, false).isPresent();
+        boolean gemini = false;
+        if (hasGemini()) {
+            String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
+            gemini = callGeminiModel(modelo, "Responde únicamente con la palabra LISTO.", "LISTO",
+                    null, null, false, 8, 8, false).isPresent();
+        }
+        return haiku || gemini;
     }
 
     public boolean hasAnthropic() {
@@ -420,6 +424,21 @@ public class AiService {
                     Math.max(maxTokens, 256), 4, false);
             if (gemini.isPresent()) return gemini;
         }
+        return Optional.empty();
+    }
+
+    /** SOAP summary uses Gemini light first so "Preparando…" does not wait on Haiku or a six-model walk. */
+    private Optional<String> callLlmSoap(String systemPrompt, String userPrompt) {
+        if (hasGemini()) {
+            String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
+            Optional<String> rapido = callGeminiModel(light, systemPrompt, userPrompt, null, null, true,
+                    900, 8, false);
+            if (rapido.isPresent()) return rapido;
+            Optional<String> flash = callGeminiModel("gemini-3.6-flash", systemPrompt, userPrompt, null, null, true,
+                    900, 10, false);
+            if (flash.isPresent()) return flash;
+        }
+        if (hasAnthropic()) return callAnthropic(systemPrompt, userPrompt, 900);
         return Optional.empty();
     }
 
@@ -1626,7 +1645,7 @@ public class AiService {
                 " | Motivo inicial: " + nvl(req.getMotivoInicial()) +
                 " | Transcripción consulta:\n" + req.getTranscripcionConsulta();
 
-        Optional<String> llm = callLlm(system, user, true);
+        Optional<String> llm = callLlmSoap(system, user);
         if (llm.isEmpty()) return soapMock(req);
         try {
             return leerSoap(llm.get());
@@ -1639,10 +1658,12 @@ public class AiService {
         final String system = """
                 Eres el paciente en el consultorio. Hablas en primera persona, en español de Colombia, como una persona de verdad.
                 Lee completo lo que acaba de decir el médico y responde ESO, en dos a cuatro frases.
-                Sí o no cuando toque, y un porqué corto. Si pregunta si tomaste algo, si la mamá te dio un remedio,
-                si hay diarrea, vómito, fiebre o picazón, inventa un dato creíble y quédate con él si vuelve a preguntar.
-                Habla bonito, con ortografía correcta. No copies faltas. No repitas la misma frase. No des un diagnóstico.
-                No JSON: solo lo que dices en voz alta.
+                Sí o no cuando toque, y un porqué corto.
+                Tu ficha (motivo, alergias, antecedentes) es tu verdad: si pregunta alergias, diles las de la ficha. No niegues lo que ya está escrito.
+                Si pregunta algo que no está en la ficha (medicamento, mamá, té, casa), inventa un dato creíble y quédate con él.
+                Si el médico indica tratamiento o se despide, confirma en una o dos frases. No recapitulés todo el plan.
+                No preguntes a dónde volver. No inventes un síntoma nuevo al final. No cierres tú la consulta.
+                Habla bonito, con ortografía correcta. No copies faltas. No des un diagnóstico. No JSON: solo lo que dices en voz alta.
                 """;
         List<String> lineas = req.getDialogo() == null ? List.of() : req.getDialogo();
         String reciente = lineas.size() <= 8 ? String.join("\n", lineas)
@@ -1650,7 +1671,10 @@ public class AiService {
         String pregunta = req.getPregunta() == null || req.getPregunta().isBlank()
                 ? "saluda y cuenta lo que te trajo"
                 : req.getPregunta().trim();
+        String ficha = nvl(req.getContexto());
+        if (ficha.length() > 900) ficha = ficha.substring(0, 900) + "...";
         String user = "Motivo: " + nvl(req.getMotivo()) +
+                "\nFicha (alergias y relato; no lo niegues):\n" + (ficha.isBlank() ? "sin más dato" : ficha) +
                 "\nConversación:\n" + (reciente.isBlank() ? "recién entra" : reciente) +
                 "\nEl médico dijo: " + pregunta;
         Optional<String> llm = callLlmConsult(system, user, 400);
