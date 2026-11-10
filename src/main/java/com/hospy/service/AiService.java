@@ -280,7 +280,7 @@ public class AiService {
             body.put("messages", List.of(Map.of("role", "user", "content", userPrompt)));
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(anthropicUrl))
-                    .timeout(Duration.ofSeconds(15))
+                    .timeout(Duration.ofSeconds(12))
                     .header("Content-Type", "application/json")
                     .header("x-api-key", anthropicKey)
                     .header("anthropic-version", "2023-06-01")
@@ -387,8 +387,7 @@ public class AiService {
 
     private Optional<String> callLlmConsult(String systemPrompt, String userPrompt, int maxTokens) {
         if (hasAnthropic()) {
-            Optional<String> claude = callAnthropic(systemPrompt, userPrompt, maxTokens);
-            if (claude.isPresent()) return claude;
+            return callAnthropic(systemPrompt, userPrompt, maxTokens);
         }
         if (hasGemini()) {
             long ahora = System.currentTimeMillis();
@@ -1617,34 +1616,33 @@ public class AiService {
 
     public AiConsultaSimResponse consultaSimulada(AiConsultaSimRequest req) {
         final String system = """
-                Eres el paciente, sentado frente al médico. Hablas en primera persona, en español de Colombia, con voz natural.
-                Respondes en dos a cinco frases, como en una consulta de verdad. No hables como un informe ni des un diagnóstico.
-                El cuaderno del médico puede tener faltas: entiende el sentido y habla con ortografía correcta. No copies el texto.
-                Contesta la pregunta de este turno. Si la conversación ya empezó, no te presentes de nuevo ni repitas todo el relato.
-                Si pregunta algo que no está escrito (desde cuándo, picazón, qué has hecho, alergias, fiebre),
-                completa el dato de forma sencilla, creíble y estable. Si vuelve a preguntarlo, la misma respuesta.
-                Nunca digas que no tienes el dato, que eres una simulación, ni "si me pregunta se lo cuento".
-                Responde solo JSON, sin arreglos:
-                {"dicePaciente":"lo que dices en voz alta","pistaParaElMedico":"",
-                 "medicamentosSugeridos":"opción · presentación · para qué\\notra",
-                 "cuidados":"qué puedes hacer en casa"}
+                Eres el paciente en el consultorio. Hablas en primera persona, español de Colombia, como un vecino de verdad.
+                Dos a cuatro frases. Ortografía correcta aunque el médico escriba mal. No copies el cuaderno.
+                LEE la última frase del médico y contéstala TODA. Si dice dos cosas (te mando algo y ¿has tenido diarrea?),
+                responde las dos: agradece lo del medicamento y sí o no a la diarrea, con un detalle corto.
+                Ejemplos: "¿vómitos?" → "No doctor, vómitos no he tenido." / "¿diarrea?" → "Sí, como de ayer, no muy seguida" o "No, de eso no."
+                NO contestes "llevo 3 días" si no te preguntaron desde cuándo. NO hables de falta de aire ni de pecho si no te lo preguntaron.
+                Si ya saludaste, no vuelvas a presentarte. Puedes preguntarle algo corto al médico, como en una consulta real.
+                Nunca digas que eres una simulación.
+                Responde solo JSON:
+                {"dicePaciente":"lo que dices en voz alta","pistaParaElMedico":"","medicamentosSugeridos":"","cuidados":""}
                 """;
         String dialogo = req.getDialogo() == null ? "" : String.join("\n", req.getDialogo());
         String contexto = nvl(req.getContexto());
-        if (contexto.length() > 1000) {
-            contexto = contexto.substring(0, 450) + "\n...\n" + contexto.substring(contexto.length() - 450);
+        if (contexto.length() > 700) {
+            contexto = contexto.substring(0, 300) + "\n...\n" + contexto.substring(contexto.length() - 300);
         }
-        boolean primerTurno = dialogo.lines().filter(l -> l.startsWith("Médico:")).count() <= 1;
-        String user = "Paciente: " + nvl(req.getNombrePaciente()) +
-                "\nMotivo: " + nvl(req.getMotivo()) +
-                "\nContexto:\n" + contexto +
-                "\nDiálogo previo:\n" + (dialogo.isBlank() ? "aún no empieza" : dialogo) +
-                "\nPregunta del médico: " + (req.getPregunta() == null || req.getPregunta().isBlank()
+        long turnosMedico = dialogo.lines().filter(l -> l.startsWith("Médico:")).count();
+        boolean pedirMeds = turnosMedico >= 3;
+        String user = "Motivo: " + nvl(req.getMotivo()) +
+                "\nNotas (pueden estar mal escritas):\n" + contexto +
+                "\nDiálogo:\n" + (dialogo.isBlank() ? "aún no empieza" : dialogo) +
+                "\nÚltima cosa que dijo el médico (contesta ESTO): " + (req.getPregunta() == null || req.getPregunta().isBlank()
                 ? "saluda y cuenta con tus palabras lo que te trajo" : req.getPregunta());
-        if (primerTurno) {
-            user += "\nPrimer turno: deja medicamentosSugeridos y cuidados vacíos.";
+        if (pedirMeds) {
+            user += "\nSi ya hay suficiente cuadro, puedes llenar medicamentosSugeridos y cuidados.";
         }
-        Optional<String> llm = callLlmConsult(system, user, primerTurno ? 700 : 900);
+        Optional<String> llm = callLlmConsult(system, user, pedirMeds ? 500 : 280);
         if (llm.isEmpty()) return consultaMock(req);
         try {
             AiConsultaSimResponse r = leerConsulta(llm.get());
