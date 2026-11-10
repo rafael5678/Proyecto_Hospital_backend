@@ -634,9 +634,11 @@ public class AiService {
                 Eres el médico de orientación de Hospy. Hablas claro, cercano y en español de Colombia, sin tecnicismos.
                 Analiza ESTE caso. Las alergias y antecedentes NO eligen la especialidad: si duele la barriga y es alérgico a hongos, NO es Dermatología.
                 La especialidad sale de los SÍNTOMAS. Dermatología solo si describe un problema de piel.
-                Hipotetiza con cuidado según lo que contó: indigestión o algo que comió si es barriga; tensión o cuadro viral si es muscular; resfriado si es tos. Nunca lo presentes como diagnóstico cerrado.
+                Hipotetiza con cuidado según lo que contó: indigestión o algo que comió si es barriga; golpe, moretón o calambre si es un trauma; resfriado si es tos. Nunca lo presentes como diagnóstico cerrado.
+                Si hay foto, descríbela (zona, color, hinchazón, moretón, herida, uña) y di si coincide con el relato. Un golpe con moretón no es un hongo, salvo que el paciente hable de la uña y la foto lo muestre.
                 Habla solo de lo que el paciente contó o de lo que se ve en la foto. No inventes falta de aire, dolor de pecho ni otros síntomas que no mencionó.
-                resumen: 4 a 6 oraciones. Qué siente, desde cuándo, qué puede estar pasando, por qué esa especialidad y un aviso concreto de SUS alergias si las hay.
+                No digas que «no pasa nada» ni que «parece leve» si hay dolor, moretón, golpe o calambre.
+                resumen: 4 a 6 oraciones. Qué siente, qué se ve en la foto si hay, cómo se relacionan, por qué esa especialidad y un aviso concreto de SUS alergias si las hay.
                 recomendaciones: qué hacer hasta la cita (comida ligera, hidratación, reposo según el caso) y qué no tomar por las alergias. Cuándo ir a urgencias.
                 hallazgos: 2 a 4 frases cortas de ESTE caso (síntoma, duración, alergias).
                 especialidadRecomendada: UNA de las especialidades disponibles.
@@ -690,25 +692,27 @@ public class AiService {
         }
         AiDermatologyResponse local = datasets.dermatology(req);
         final String system = """
-                Eres dermatólogo de orientación de Hospy. Mira la foto y el relato de ESTA lesión.
-                La pista del clasificador es solo referencia: descríbelo tú (zona, color, hinchazón, costra, pus, dolor) y corrígela si no coincide.
-                Explica el riesgo de lo que ves, qué cuidados seguir mientras agenda la cita y cuándo ir antes.
-                No hables de otros órganos si la foto y el texto son de piel.
-                NUNCA menciones datasets, modelos, ExtraTrees, HAM10000 ni precisión.
+                Eres el médico de Hospy que mira la foto JUNTO con lo que el paciente escribió. No analices la foto sola.
+                Cruza las tres cosas: relato, duración y foto. Si dice que se golpeó y tiene un moretón, la foto es ese moretón o esa zona, no un hongo de uña.
+                Una alergia a hongos NO significa onicomicosis. El clasificador local se equivoca: si contradice el relato, ignóralo.
+                Describe lo que SÍ se ve (color, hinchazón, hematoma, costra, uña, herida) y cómo encaja con el golpe, el dolor o el calambre.
+                Nunca digas que «no pasa nada» o que «parece leve» si hay dolor, moretón, golpe o calambre: explica qué puede ser y qué vigilar.
+                Cuidados concretos hasta la cita, respetando alergias (dipirona, látex, huevo, moho).
+                NUNCA menciones datasets, modelos, ExtraTrees, HAM10000, confianza ni precisión.
                 Responde SOLO JSON:
                 {"nivelRiesgo":"BAJO|MEDIO|ALTO|CRITICO","scoreRiesgo":0.0,
-                 "explicacion":"4 oraciones: qué se ve, dónde, por qué ese nivel y qué hacer hasta la cita",
-                 "diagnosticosDiferenciales":["posibles cuadros de esta lesión"],
-                 "caracteristicasObservadas":["lo que se ve en la foto o se describe"],
+                 "explicacion":"5 o 6 oraciones: qué se ve, cómo se relaciona con lo que contó, por qué ese nivel",
+                 "diagnosticosDiferenciales":["cuadros que encajan con foto Y relato"],
+                 "caracteristicasObservadas":["lo visible en la foto, en lenguaje claro"],
                  "recomendaciones":"cuidados concretos hasta ver al médico","advertencia":""}
                 """;
-        String user = skinVisionPrompt(req) + "\nPista interna, no la copies: " + datasets.contextoPielParaGemini(req);
-        Optional<String> llm = askMultimodal(system, user, req.getImagenBase64());
+        String user = skinVisionPrompt(req);
+        Optional<String> llm = askMultimodal(system, user, req.getImagenBase64(), 1600, 15);
         if (llm.isEmpty()) return polishSkin(local, req);
         try {
             AiDermatologyResponse r = mapper.readValue(extractJson(llm.get()), AiDermatologyResponse.class);
             r.setModoDemo(false);
-            return polishSkin(mergeSkin(r, local), req);
+            return polishSkin(preferStory(r, local, req), req);
         } catch (Exception ex) {
             log.warn("Could not parse dermatology JSON: {}", ex.getMessage());
             return polishSkin(local, req);
@@ -2099,12 +2103,12 @@ public class AiService {
     private static String nvl(String s) { return s == null || s.isBlank() ? "no informado" : s; }
 
     private static String skinVisionPrompt(AiDermatologyRequest req) {
-        return "Observa la foto (si existe) y el relato del paciente. " +
-                "Descripción: " + nvl(req.getDescripcion()) +
-                " | Evolución: " + nvl(req.getTiempoEvolucion()) +
-                " | Síntomas asociados: " + nvl(req.getSintomasAsociados()) +
-                " | Foto: " + ((req.getImagenBase64() == null || req.getImagenBase64().isBlank())
-                ? "no adjunta" : "adjunta, analízala pixel a pixel");
+        return "Relato del paciente (esto manda): " + nvl(req.getDescripcion()) +
+                "\nSíntomas asociados: " + nvl(req.getSintomasAsociados()) +
+                "\nDesde hace: " + nvl(req.getTiempoEvolucion()) +
+                "\nFoto: " + ((req.getImagenBase64() == null || req.getImagenBase64().isBlank())
+                ? "no adjunta"
+                : "adjunta. Descríbela y di si cuadra con el golpe, moretón, dolor o calambre que contó. No inventes un hongo si el relato es un trauma.");
     }
 
     private static String extractBase64(String dataUrl) {
@@ -2170,41 +2174,99 @@ public class AiService {
         r.setCaracteristicasObservadas(TriageOrientation.withoutJargon(r.getCaracteristicasObservadas()));
         r.setDiagnosticosDiferenciales(TriageOrientation.withoutJargon(r.getDiagnosticosDiferenciales()));
         if (r.getAdvertencia() != null && TriageOrientation.isJargon(r.getAdvertencia())) r.setAdvertencia(null);
-        if (r.getRecomendaciones() != null && TriageOrientation.isJargon(r.getRecomendaciones())) r.setRecomendaciones(null);
-        if (r.getExplicacion() == null || r.getExplicacion().isBlank() || TriageOrientation.isJargon(r.getExplicacion())
-                || r.getExplicacion().trim().length() < 80) {
+        if (r.getRecomendaciones() != null && (TriageOrientation.isJargon(r.getRecomendaciones()) || fungusAgainstTrauma(req, r.getRecomendaciones()))) {
+            r.setRecomendaciones(null);
+        }
+        if (r.getDiagnosticosDiferenciales() != null) {
+            r.setDiagnosticosDiferenciales(r.getDiagnosticosDiferenciales().stream()
+                    .filter(d -> !fungusAgainstTrauma(req, d))
+                    .toList());
+        }
+        if (thinSkinStory(r.getExplicacion(), req)) {
             r.setExplicacion(skinExplanation(r.getNivelRiesgo(), req));
         }
         if (r.getRecomendaciones() == null || r.getRecomendaciones().isBlank()) {
-            r.setRecomendaciones("Agenda dermatología con esta foto y la descripción. Mientras tanto no aprietes la zona, mantenla limpia y consulta antes si crece, duele más o aparece fiebre.");
+            r.setRecomendaciones(skinCare(req));
+        }
+        if (r.getCaracteristicasObservadas() == null || r.getCaracteristicasObservadas().isEmpty()) {
+            r.setCaracteristicasObservadas(List.of(traumaStory(req)
+                    ? "La foto se lee junto con el golpe, el moretón y el dolor que contó"
+                    : "Se tuvo en cuenta la foto y lo que escribió el paciente"));
         }
         return r;
     }
 
+    private static boolean thinSkinStory(String explicacion, AiDermatologyRequest req) {
+        if (explicacion == null || explicacion.isBlank() || TriageOrientation.isJargon(explicacion)) return true;
+        String t = explicacion.toLowerCase();
+        if (t.contains("parece leve") || t.contains("no pasa nada") || t.startsWith("el cambio de piel que describes")) {
+            return true;
+        }
+        return traumaStory(req) && !(t.contains("golpe") || t.contains("moret") || t.contains("hematoma")
+                || t.contains("contusi") || t.contains("brazo") || t.contains("calambre"));
+    }
+
+    private static boolean traumaStory(AiDermatologyRequest req) {
+        String t = ((req.getDescripcion() == null ? "" : req.getDescripcion()) + " "
+                + (req.getSintomasAsociados() == null ? "" : req.getSintomasAsociados())).toLowerCase();
+        return t.contains("golpe") || t.contains("moret") || t.contains("hematoma") || t.contains("contusi")
+                || t.contains("calambr") || t.contains("torced") || t.contains("esguince") || t.contains("caída")
+                || t.contains("caida") || t.contains("me pegu");
+    }
+
+    private static boolean fungusAgainstTrauma(AiDermatologyRequest req, String text) {
+        if (text == null || !traumaStory(req)) return false;
+        String t = text.toLowerCase();
+        return t.contains("onicomicosis") || t.contains("hongo de uña") || t.contains("tiña") || t.contains("pie de atleta");
+    }
+
     private static String skinExplanation(String nivel, AiDermatologyRequest req) {
+        String relato = nvl(req.getDescripcion());
+        if (relato.equals("no informado") && req.getSintomasAsociados() != null) relato = req.getSintomasAsociados().trim();
+        if (relato.equals("no informado")) relato = "";
+        String dur = nvl(req.getTiempoEvolucion());
+        if (dur.equals("no informado")) dur = "";
+        if (traumaStory(req)) {
+            return "Lo que cuentas y lo que se ve van juntos: un golpe en el brazo"
+                    + (dur.isBlank() ? "" : " de " + dur)
+                    + ", con moretón y a veces calambre. Eso no es «nada»: puede ser un hematoma o una contusión que todavía molesta."
+                    + " La foto se interpreta con ese relato, no como una mancha suelta ni como un hongo."
+                    + " El médico mira si hay inflamación, si el moretón cambia y si la mano se calambra más."
+                    + (relato.isBlank() ? "" : " Relato: " + relato + ".");
+        }
         String n = nivel == null ? "MEDIO" : nivel.toUpperCase();
         String because = switch (n) {
             case "CRITICO" -> "Hay signos de alarma (dolor fuerte, extensión rápida o posible infección grave). Hay que valorarlo ya.";
-            case "ALTO" -> "La zona se ve inflamada o alterada de forma importante. Puede ser infección o lesión que no debe esperarse.";
-            case "MEDIO" -> "La lesión que describes conviene revisarla pronto, aunque no parece una emergencia inmediata.";
-            default -> "El cambio de piel que describes parece leve. Vigílalo y consulta si empeora, hay fiebre o el dolor aumenta.";
+            case "ALTO" -> "La zona se ve inflamada o alterada de forma importante. Conviene verla pronto.";
+            case "MEDIO" -> "Lo que se ve y lo que cuentas conviene revisarlo, aunque no parece una emergencia inmediata.";
+            default -> "Hay un cambio en la piel que hay que correlacionar con lo que sientes. Vigílalo y consulta si empeora.";
         };
-        String relato = (nvl(req.getDescripcion()).equals("no informado") ? "" : req.getDescripcion().trim());
-        if (relato.isBlank() && req.getSintomasAsociados() != null) relato = req.getSintomasAsociados().trim();
-        if (!relato.isBlank()) return because + " Relato: " + relato + ".";
+        if (!relato.isBlank()) return because + " Encaja con lo que escribiste: " + relato + ".";
         return because;
     }
 
-    private static AiDermatologyResponse mergeSkin(AiDermatologyResponse gemini, AiDermatologyResponse local) {
-        if (gemini.getNivelRiesgo() == null || gemini.getNivelRiesgo().isBlank()) {
-            gemini.setNivelRiesgo(local.getNivelRiesgo());
+    private static String skinCare(AiDermatologyRequest req) {
+        if (traumaStory(req)) {
+            return "Hasta la cita, reposo relativo del brazo, frío local corto si no hay herida abierta, y no aprietes ni masajees el moretón. No tomes dipirona ni metamizol si eres alérgico. Si el dolor aumenta, se hincha mucho, pierde fuerza o cambia de color de forma rara, ve antes a urgencias.";
+        }
+        return "Agenda con esta foto y la descripción. Mientras tanto no aprietes la zona, mantenla limpia y consulta antes si crece, duele más o aparece fiebre.";
+    }
+
+    /** Claude's reading of the photo wins. The local classifier is only a last resort. */
+    private static AiDermatologyResponse preferStory(AiDermatologyResponse claude, AiDermatologyResponse local, AiDermatologyRequest req) {
+        if (claude.getNivelRiesgo() == null || claude.getNivelRiesgo().isBlank()) {
+            claude.setNivelRiesgo(local.getNivelRiesgo());
         } else {
-            gemini.setNivelRiesgo(gemini.getNivelRiesgo().trim().toUpperCase());
+            claude.setNivelRiesgo(claude.getNivelRiesgo().trim().toUpperCase());
         }
-        if (gemini.getScoreRiesgo() == null) gemini.setScoreRiesgo(local.getScoreRiesgo());
-        if (gemini.getExplicacion() == null || gemini.getExplicacion().isBlank()) {
-            gemini.setExplicacion(local.getExplicacion());
+        if (claude.getScoreRiesgo() == null) claude.setScoreRiesgo(local.getScoreRiesgo());
+        if (claude.getExplicacion() == null || claude.getExplicacion().isBlank()) {
+            claude.setExplicacion(local.getExplicacion());
         }
-        return gemini;
+        if ((claude.getDiagnosticosDiferenciales() == null || claude.getDiagnosticosDiferenciales().isEmpty())
+                && !traumaStory(req)) {
+            claude.setDiagnosticosDiferenciales(local.getDiagnosticosDiferenciales());
+        }
+        return claude;
     }
 }

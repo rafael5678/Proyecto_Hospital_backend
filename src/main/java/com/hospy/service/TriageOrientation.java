@@ -81,7 +81,8 @@ final class TriageOrientation {
                 || t.contains("extratrees") || t.contains("medmcqa") || t.contains("medqa")
                 || t.contains("hugging") || t.contains("esi/mts") || t.contains("modelo local")
                 || t.contains("precisión de prueba") || t.contains("bosque") || t.contains("extra trees")
-                || t.contains("etiquetas tipo") || t.contains("clasificador") || t.contains("gemini no");
+                || t.contains("etiquetas tipo") || t.contains("clasificador") || t.contains("gemini no")
+                || t.contains("confianza de la clase") || t.contains("especialidad sugerida:");
     }
 
     static List<String> withoutJargon(List<String> in) {
@@ -150,6 +151,13 @@ final class TriageOrientation {
             if (contains(s, "muscul", "cuerpo", "espalda", "lumb")) {
                 sb.append(" Los dolores musculares a veces acompañan cuando hay un cuadro viral o el cuerpo está inflamado.");
             }
+        } else if (contains(s, "golpe", "moret", "hematoma", "contusi", "esguince", "torced", "calambr", "brazo")) {
+            sb.append("Ese dolor");
+            if (!duracion.isBlank()) sb.append(" de ").append(duracion);
+            sb.append(" encaja con un golpe o una contusión");
+            if (contains(s, "moret")) sb.append(", con moretón");
+            if (contains(s, "calambr")) sb.append(" y calambres");
+            sb.append(". No es «nada»: hay que mirar inflamación, fuerza y cómo evoluciona el moretón.");
         } else if (contains(s, "muscul", "cuerpo cortado", "lumbago", "espalda")) {
             sb.append("Ese dolor muscular");
             if (!duracion.isBlank()) sb.append(" de ").append(duracion);
@@ -185,6 +193,8 @@ final class TriageOrientation {
         sb.append("Reserva ").append(esp).append(" sin dejar pasar el cuadro. ");
         if (digestive(s)) {
             sb.append("Hasta la cita, come liviano (caldo, arroz, banano), toma agua de a sorbos y evita frituras, picante y alcohol. ");
+        } else if (contains(s, "golpe", "moret", "hematoma", "contusi", "calambr", "brazo", "esguince")) {
+            sb.append("Hasta la cita, reposo relativo, frío local corto si no hay herida, y no aprietes el moretón. ");
         } else {
             sb.append("Hasta ver al médico, descansa, hidrátate y anota cómo evoluciona lo que sientes. ");
         }
