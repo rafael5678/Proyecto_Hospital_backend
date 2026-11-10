@@ -39,7 +39,9 @@ public class SpecialtyService {
         return guardadas.isEmpty() ? DEFAULTS : guardadas;
     }
 
+    @Transactional
     public List<SpecialtyDto> list() {
+        dropRequestPhrases();
         return repository.findAllByOrderByNombreAsc().stream()
                 .map(s -> SpecialtyDto.builder().id(s.getId()).nombre(s.getNombre()).build())
                 .toList();
@@ -47,6 +49,7 @@ public class SpecialtyService {
 
     @Transactional
     public SpecialtyDto create(String raw) {
+        dropRequestPhrases();
         String nombre = tidy(raw);
         if (nombre == null) {
             throw new RuntimeException("Escribe el nombre de la especialización.");
@@ -68,15 +71,7 @@ public class SpecialtyService {
         if (limpio.length() < 3 || limpio.length() > 60) return null;
         if (!limpio.matches("[\\p{L}][\\p{L} .'-]*")) return null;
         String plano = plain(limpio);
-        if (plano.equals("nueva") || plano.equals("nuevo") || plano.equals("especialidad") || plano.equals("especializacion")) {
-            return null;
-        }
-        if (plano.contains("quiero") || plano.contains("necesito") || plano.contains("deseo")) return null;
-        if ((plano.contains("crear") || plano.contains("crea ") || plano.contains("agreg") || plano.contains("registr"))
-                && (plano.contains("especializ") || plano.contains("especialidad"))) {
-            return null;
-        }
-        if (plano.contains("una especializ") || plano.contains("una especialidad")) return null;
+        if (isRequestPhrase(plano)) return null;
         String[] partes = limpio.split(" ");
         StringBuilder titulo = new StringBuilder();
         for (int i = 0; i < partes.length; i++) {
@@ -94,6 +89,26 @@ public class SpecialtyService {
             }
         }
         return titulo.toString();
+    }
+
+    private void dropRequestPhrases() {
+        repository.findAll().stream()
+                .filter(s -> isRequestPhrase(plain(s.getNombre())))
+                .forEach(repository::delete);
+    }
+
+    private static boolean isRequestPhrase(String plano) {
+        if (plano == null || plano.isBlank()) return true;
+        if (plano.equals("nueva") || plano.equals("nuevo") || plano.equals("especialidad") || plano.equals("especializacion")) {
+            return true;
+        }
+        if (plano.contains("quiero") || plano.contains("necesito") || plano.contains("deseo")) return true;
+        if ((plano.contains("crear") || plano.contains("crea ") || plano.contains("agreg") || plano.contains("registr"))
+                && (plano.contains("especializ") || plano.contains("especialidad"))) {
+            return true;
+        }
+        return plano.contains("una especializ") || plano.contains("una especialidad")
+                || plano.contains("la especializ") || plano.contains("la especialidad");
     }
 
     private Optional<Specialty> findSame(String nombre) {

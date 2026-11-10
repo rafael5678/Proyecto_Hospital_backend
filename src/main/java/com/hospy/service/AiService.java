@@ -1574,7 +1574,6 @@ public class AiService {
         if (!sigue && pide && !crear) return null;
         String nombre = specialtyService.tidy(nameAfterSpecialtyWord(instruccion));
         if (nombre == null && sigue && !pide) nombre = specialtyService.tidy(instruccion);
-        if (nombre == null && sigue) nombre = specialtyService.tidy(instruccion);
         if (nombre == null) {
             AiAdminOperationResponse r = copyDraft(previo);
             r.setAccion("PREGUNTAR_ESPECIALIDAD");
