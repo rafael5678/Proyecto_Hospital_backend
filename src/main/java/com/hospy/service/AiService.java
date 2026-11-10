@@ -230,7 +230,7 @@ public class AiService {
         }
         if (!hasOpenAi()) {
             return new AiTranscriptionResponse("", true,
-                    "No se entendió el audio. Habla en Chrome o Edge, o escribe los datos.");
+                    "No se escuchó nada. Pulsa Hablar, espera a ver el texto y luego Terminar y enviar.");
         }
         String boundary = "HospyBoundary" + UUID.randomUUID();
         try {
