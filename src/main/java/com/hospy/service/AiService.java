@@ -285,17 +285,24 @@ public class AiService {
     }
 
     private Optional<String> callAnthropic(String systemPrompt, String userPrompt, int maxTokens) {
+        return callAnthropic(systemPrompt, userPrompt, maxTokens, null, null, 5);
+    }
+
+    private Optional<String> callAnthropic(String systemPrompt, String userPrompt, int maxTokens,
+                                           String mime, String base64, int timeoutSeconds) {
         if (!hasAnthropic()) return Optional.empty();
         int tokens = Math.max(maxTokens > 0 ? maxTokens : 512, 256);
         String clave = claveAnthropic();
+        int espera = timeoutSeconds > 0 ? timeoutSeconds : 5;
         for (String modelo : anthropicModels()) {
-            Optional<String> out = callAnthropicModel(modelo, clave, systemPrompt, userPrompt, tokens);
+            Optional<String> out = callAnthropicModel(modelo, clave, systemPrompt, userPrompt, tokens, mime, base64, espera);
             if (out.isPresent()) return out;
         }
         return Optional.empty();
     }
 
-    private Optional<String> callAnthropicModel(String modelo, String clave, String systemPrompt, String userPrompt, int tokens) {
+    private Optional<String> callAnthropicModel(String modelo, String clave, String systemPrompt, String userPrompt,
+                                                int tokens, String mime, String base64, int timeoutSeconds) {
         try {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("model", modelo);
@@ -303,10 +310,21 @@ public class AiService {
             if (systemPrompt != null && !systemPrompt.isBlank()) {
                 body.put("system", systemPrompt);
             }
-            body.put("messages", List.of(Map.of("role", "user", "content", userPrompt)));
+            Object content = userPrompt;
+            if (base64 != null && !base64.isBlank()) {
+                String tipo = (mime == null || mime.isBlank()) ? "image/jpeg" : mime;
+                content = List.of(
+                        Map.of("type", "image", "source", Map.of(
+                                "type", "base64",
+                                "media_type", tipo,
+                                "data", base64)),
+                        Map.of("type", "text", "text", userPrompt)
+                );
+            }
+            body.put("messages", List.of(Map.of("role", "user", "content", content)));
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(anthropicUrl))
-                    .timeout(Duration.ofSeconds(5))
+                    .timeout(Duration.ofSeconds(timeoutSeconds > 0 ? timeoutSeconds : 5))
                     .header("Content-Type", "application/json")
                     .header("x-api-key", clave)
                     .header("anthropic-version", "2023-06-01")
@@ -593,6 +611,7 @@ public class AiService {
                 Habla solo de lo que el paciente contó o de lo que se ve en la foto. No inventes falta de aire, dolor de pecho ni otros síntomas que no mencionó.
                 El resumen debe tener 4 a 6 oraciones en español: qué refirió, desde cuándo, antecedentes, qué se aprecia en la foto si hay, por qué ese nivel y que agende ya la especialidad mientras espera.
                 Las recomendaciones deben decir qué vigilar de SUS molestias y qué hacer hasta la cita.
+                especialidadRecomendada tiene que ser UNA de las especialidades disponibles, la que mejor encaje con ESTE relato.
                 Si hay dolor de cabeza y además una lesión de piel, explica las dos cosas y elige la especialidad más urgente.
                 NUNCA menciones datasets, modelos, ESI, HAM10000 ni precisión.
                 Devuelve UNICAMENTE JSON:
@@ -607,6 +626,7 @@ public class AiService {
                 - Antecedentes: %s
                 - Edad: %s
                 - Foto: %s
+                - Especialidades disponibles (elige UNA): %s
                 Pista interna de datasets, no la copies ni la cites: %s
                 """.formatted(
                 nvl(req.getSintomas()),
@@ -614,12 +634,13 @@ public class AiService {
                 nvl(req.getAntecedentes()),
                 req.getEdadPaciente() == null ? "no informado" : req.getEdadPaciente().toString(),
                 hayFoto ? "sí, descríbela y úsala en el resumen" : "no",
+                especialidadesDisponibles(),
                 datasets.contextoTriageParaGemini(req));
 
         Optional<String> llm = consultarGemini(system, user, req.getImagenBase64());
         if (llm.isEmpty()) return orientarSinGemini(local, req);
         try {
-            AiTriageResponse r = mapper.readValue(llm.get(), AiTriageResponse.class);
+            AiTriageResponse r = mapper.readValue(extraerJson(llm.get()), AiTriageResponse.class);
             r.setModoDemo(false);
             normalizarTriage(r, local);
             completarOrientacion(r, local, req);
@@ -691,7 +712,7 @@ public class AiService {
         Optional<String> llm = consultarGemini(system, user, req.getImagenBase64());
         if (llm.isEmpty()) return limpiarPiel(local, req);
         try {
-            AiDermatologyResponse r = mapper.readValue(llm.get(), AiDermatologyResponse.class);
+            AiDermatologyResponse r = mapper.readValue(extraerJson(llm.get()), AiDermatologyResponse.class);
             r.setModoDemo(false);
             return limpiarPiel(fusionarPiel(r, local), req);
         } catch (Exception ex) {
@@ -2087,13 +2108,43 @@ public class AiService {
         return "image/jpeg";
     }
 
+    /** Claude first (text or photo). Gemini light only if Haiku does not answer. */
     private Optional<String> consultarGemini(String system, String user, String imagenDataUrl) {
         String b64 = extraerBase64(imagenDataUrl);
-        if (!b64.isBlank() && hasGemini()) {
-            Optional<String> vision = callGemini(system, user, mimeDeDataUrl(imagenDataUrl), b64, true);
+        String mime = mimeDeDataUrl(imagenDataUrl);
+        boolean hayFoto = !b64.isBlank();
+        if (hasAnthropic()) {
+            Optional<String> claude = callAnthropic(system, user, 900, hayFoto ? mime : null, hayFoto ? b64 : null, 8);
+            if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
+        }
+        if (hasGemini() && hayFoto) {
+            String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
+            Optional<String> vision = callGeminiModel(light, system, user, mime, b64, true, 900, 10, false);
             if (vision.isPresent()) return vision;
         }
-        return callLlm(system, user);
+        if (hasGemini()) {
+            String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
+            Optional<String> rapido = callGeminiModel(light, system, user, null, null, true, 900, 8, false);
+            if (rapido.isPresent()) return rapido;
+        }
+        return Optional.empty();
+    }
+
+    private String especialidadesDisponibles() {
+        try {
+            List<String> nombres = specialtyService.names();
+            if (nombres != null && !nombres.isEmpty()) return String.join(", ", nombres);
+        } catch (Exception ignored) {
+            /* catalog miss still lets Claude pick a usual specialty */
+        }
+        return String.join(", ", SpecialtyService.DEFAULTS);
+    }
+
+    private String extraerJson(String bruto) {
+        String t = cleanJson(bruto);
+        int i = t.indexOf('{');
+        int f = t.lastIndexOf('}');
+        return (i >= 0 && f > i) ? t.substring(i, f + 1) : t;
     }
 
     private static boolean esJergaTecnica(String s) {
