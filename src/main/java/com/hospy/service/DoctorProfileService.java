@@ -36,6 +36,8 @@ public class DoctorProfileService {
         LocalDate hoy = ColombiaTime.today();
         long hoyCount = citas.stream()
                 .filter(c -> c.getFechaHora().toLocalDate().equals(hoy))
+                .filter(c -> c.getEstado() == AppointmentStatus.PENDIENTE
+                        || c.getEstado() == AppointmentStatus.ACEPTADA)
                 .count();
         return DoctorDashboardDto.builder()
                 .totalCitas(citas.size())
