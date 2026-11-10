@@ -125,7 +125,7 @@ public class AiService {
     /** Tiny Haiku call so TLS is warm before the first question. Gemini stays as backup only. */
     public boolean warmupConsult() {
         if (hasAnthropic()) {
-            return callAnthropic("Responde únicamente con la palabra LISTO.", "LISTO", 8).isPresent();
+            return callAnthropic("Responde únicamente con la palabra LISTO.", "LISTO", 64).isPresent();
         }
         if (!hasGemini()) return false;
         String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
@@ -134,7 +134,20 @@ public class AiService {
     }
 
     public boolean hasAnthropic() {
-        return anthropicKey != null && !anthropicKey.isBlank();
+        return !claveAnthropic().isBlank();
+    }
+
+    private String claveAnthropic() {
+        return anthropicKey == null ? "" : anthropicKey.replaceAll("\\s+", "");
+    }
+
+    private List<String> anthropicModels() {
+        List<String> modelos = new ArrayList<>();
+        addModel(modelos, anthropicModel);
+        addModel(modelos, "claude-haiku-5-5");
+        addModel(modelos, "claude-haiku-4-5");
+        if (modelos.size() > 2) return modelos.subList(0, 2);
+        return modelos;
     }
 
     public boolean hasOpenAi() {
@@ -269,10 +282,19 @@ public class AiService {
 
     private Optional<String> callAnthropic(String systemPrompt, String userPrompt, int maxTokens) {
         if (!hasAnthropic()) return Optional.empty();
+        int tokens = Math.max(maxTokens > 0 ? maxTokens : 512, 256);
+        String clave = claveAnthropic();
+        for (String modelo : anthropicModels()) {
+            Optional<String> out = callAnthropicModel(modelo, clave, systemPrompt, userPrompt, tokens);
+            if (out.isPresent()) return out;
+        }
+        return Optional.empty();
+    }
+
+    private Optional<String> callAnthropicModel(String modelo, String clave, String systemPrompt, String userPrompt, int tokens) {
         try {
-            int tokens = maxTokens > 0 ? maxTokens : 900;
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("model", anthropicModel);
+            body.put("model", modelo);
             body.put("max_tokens", tokens);
             if (systemPrompt != null && !systemPrompt.isBlank()) {
                 body.put("system", systemPrompt);
@@ -280,16 +302,16 @@ public class AiService {
             body.put("messages", List.of(Map.of("role", "user", "content", userPrompt)));
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(anthropicUrl))
-                    .timeout(Duration.ofSeconds(12))
+                    .timeout(Duration.ofSeconds(5))
                     .header("Content-Type", "application/json")
-                    .header("x-api-key", anthropicKey)
+                    .header("x-api-key", clave)
                     .header("anthropic-version", "2023-06-01")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8))
                     .build();
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (resp.statusCode() != 200) {
                 String snippet = resp.body() == null ? "" : resp.body().substring(0, Math.min(280, resp.body().length()));
-                log.warn("Anthropic {} status={} body={}", anthropicModel, resp.statusCode(), snippet);
+                log.warn("Anthropic {} status={} body={}", modelo, resp.statusCode(), snippet);
                 return Optional.empty();
             }
             JsonNode root = mapper.readTree(resp.body());
@@ -298,13 +320,15 @@ public class AiService {
             StringBuilder texto = new StringBuilder();
             if (parts.isArray()) {
                 for (JsonNode part : parts) {
+                    String tipo = part.path("type").asText("");
+                    if ("thinking".equals(tipo) || "redacted_thinking".equals(tipo)) continue;
                     String t = part.path("text").asText("");
                     if (!t.isBlank()) texto.append(t);
                 }
             }
-            return texto.isEmpty() ? Optional.empty() : Optional.of(cleanJson(texto.toString()));
+            return texto.isEmpty() ? Optional.empty() : Optional.of(texto.toString().trim());
         } catch (Exception ex) {
-            log.warn("Excepción Anthropic {}: {}", anthropicModel, ex.getMessage());
+            log.warn("Excepción Anthropic {}: {}", modelo, ex.getMessage());
             return Optional.empty();
         }
     }
@@ -387,18 +411,15 @@ public class AiService {
 
     private Optional<String> callLlmConsult(String systemPrompt, String userPrompt, int maxTokens) {
         if (hasAnthropic()) {
-            return callAnthropic(systemPrompt, userPrompt, maxTokens);
+            Optional<String> claude = callAnthropic(systemPrompt, userPrompt, maxTokens);
+            if (claude.isPresent()) return claude;
         }
         if (hasGemini()) {
-            long ahora = System.currentTimeMillis();
-            for (String modelo : geminiModelsConsult()) {
-                if (modeloAgotadoHasta.getOrDefault(modelo, 0L) > ahora) continue;
-                Optional<String> out = callGeminiModel(modelo, systemPrompt, userPrompt, null, null, true,
-                        maxTokens, 8, false);
-                if (out.isPresent()) return out;
-            }
+            String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
+            Optional<String> gemini = callGeminiModel(modelo, systemPrompt, userPrompt, null, null, false,
+                    Math.max(maxTokens, 256), 4, false);
+            if (gemini.isPresent()) return gemini;
         }
-        if (hasOpenAi()) return callOpenAi(systemPrompt, userPrompt);
         return Optional.empty();
     }
 
@@ -1616,9 +1637,12 @@ public class AiService {
 
     public AiConsultaSimResponse consultaSimulada(AiConsultaSimRequest req) {
         final String system = """
-                Eres el paciente. Español de Colombia, primera persona, como un vecino.
-                Lee TODO lo que acaba de decir el médico y contesta eso ahora, en 2 o 3 frases.
-                Si pregunta dos cosas, responde las dos. Ortografía bien. No JSON. No diagnóstico. No digas que eres IA.
+                Eres el paciente en el consultorio. Hablas en primera persona, en español de Colombia, como una persona de verdad.
+                Lee completo lo que acaba de decir el médico y responde ESO, en dos a cuatro frases.
+                Sí o no cuando toque, y un porqué corto. Si pregunta si tomaste algo, si la mamá te dio un remedio,
+                si hay diarrea, vómito, fiebre o picazón, inventa un dato creíble y quédate con él si vuelve a preguntar.
+                Habla bonito, con ortografía correcta. No copies faltas. No repitas la misma frase. No des un diagnóstico.
+                No JSON: solo lo que dices en voz alta.
                 """;
         List<String> lineas = req.getDialogo() == null ? List.of() : req.getDialogo();
         String reciente = lineas.size() <= 8 ? String.join("\n", lineas)
@@ -1626,11 +1650,10 @@ public class AiService {
         String pregunta = req.getPregunta() == null || req.getPregunta().isBlank()
                 ? "saluda y cuenta lo que te trajo"
                 : req.getPregunta().trim();
-        String user = "Qué tienes: " + nvl(req.getMotivo()) +
-                "\nÚltimas frases:\n" + (reciente.isBlank() ? "nada aún" : reciente) +
-                "\nEl médico acaba de decir: " + pregunta +
-                "\nContesta eso, en voz alta.";
-        Optional<String> llm = callLlmConsult(system, user, 180);
+        String user = "Motivo: " + nvl(req.getMotivo()) +
+                "\nConversación:\n" + (reciente.isBlank() ? "recién entra" : reciente) +
+                "\nEl médico dijo: " + pregunta;
+        Optional<String> llm = callLlmConsult(system, user, 400);
         if (llm.isEmpty()) return consultaMock(req);
         return hablarComoPaciente(llm.get(), req);
     }
