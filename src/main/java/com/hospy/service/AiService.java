@@ -1649,18 +1649,19 @@ public class AiService {
     /* ============ 3. Escriba SOAP médico ============== */
     public AiSoapResponse soap(AiSoapRequest req) {
         final String system = """
-                Apoyas al médico en la consulta. No copies el aviso de triaje que ya vio el paciente.
-                No uses semáforos, colores de severidad ni niveles ESI. No inventes signos vitales, dosis ni diagnósticos cerrados.
-                Si un dato no está en el texto, escribe "No informado". El médico decide.
-                Los medicamentos son opciones para que él elija, no una orden.
+                Apoyas al médico en el consultorio. El relato ya está en pantalla: NO lo recopies.
+                No nombres al paciente, no digas el sexo, no repitas días de evolución ni la lista de alergias.
+                resumenParaMedico: 2 o 3 frases de lo que PUEDE estar pasando (hipótesis breve), como colega.
+                enfoqueEnConsulta: 1 o 2 frases de qué examinar ahora. No repitas el resumen.
+                preguntasSugeridas: 3 preguntas que el relato todavía no responde.
+                medicamentosSugeridos: 1 o 2 opciones compatibles con las alergias del relato (si hay alergia a AINE, no pongas ibuprofeno).
+                cuidados: 1 o 2 frases.
+                subjetivo, objetivo, apreciacion y plan: cortos, sin repetir el resumen. Si falta un dato, "No informado".
+                diagnosticoPresuntivo: 3 a 6 palabras.
+                No uses semáforos ni ESI. No inventes signos vitales ni un diagnóstico cerrado. El médico decide.
                 Responde solo JSON. Las listas van como texto, un ítem por línea, nunca como arreglo:
-                {"resumenParaMedico":"qué le pasa, en 3 o 4 frases para el médico",
-                 "enfoqueEnConsulta":"qué examinar y qué decidir en esta cita",
-                 "preguntasSugeridas":"pregunta 1\\npregunta 2\\npregunta 3",
-                 "medicamentosSugeridos":"nombre · presentación habitual · para qué\\notro",
-                 "cuidados":"ejercicio, reposo o señales para volver",
-                 "subjetivo":"...","objetivo":"...","apreciacion":"...","plan":"...",
-                 "diagnosticoPresuntivo":"...","procedimientosSugeridos":"..."}
+                {"resumenParaMedico":"...","enfoqueEnConsulta":"...","preguntasSugeridas":"...","medicamentosSugeridos":"...","cuidados":"...",
+                 "subjetivo":"...","objetivo":"...","apreciacion":"...","plan":"...","diagnosticoPresuntivo":"...","procedimientosSugeridos":"..."}
                 """;
         String user = "Nombre paciente: " + nvl(req.getNombrePaciente()) +
                 " | Motivo inicial: " + nvl(req.getMotivoInicial()) +
@@ -1728,18 +1729,19 @@ public class AiService {
     private AiSoapResponse soapMock(AiSoapRequest req) {
         String t = req.getTranscripcionConsulta();
         String recorte = t == null ? "" : (t.length() > 280 ? t.substring(0, 280) + "..." : t);
+        String motivo = nvl(req.getMotivoInicial());
         return AiSoapResponse.builder()
-                .resumenParaMedico("El paciente consulta por: " + nvl(req.getMotivoInicial())
-                        + ". En el relato cuenta: " + (recorte.isBlank() ? "sin más detalle." : recorte))
-                .enfoqueEnConsulta("Confirma desde cuándo empezó, qué lo alivia y qué lo empeora. Examina la zona que refiere antes de decidir un medicamento.")
-                .preguntasSugeridas("¿Desde cuándo le pasa y cómo empezó?\n¿Ha tomado algo y le sirvió?\n¿Hay fiebre, falta de aire o un dolor que se irradia?")
-                .medicamentosSugeridos("Analgésico habitual · caja de tabletas · solo si no hay alergia y el examen lo permite\nMedida no farmacológica · reposo relativo y movimiento suave · mientras se aclara la causa")
-                .cuidados("Movimiento suave de la zona si el dolor lo permite, calor local y volver si aparece fiebre, falta de aire o el dolor se vuelve intenso.")
-                .subjetivo("Refiere: " + (recorte.isBlank() ? "no informado" : recorte))
-                .objetivo("Signos vitales: no informados. Completar en el examen.")
-                .apreciacion("Impresión pendiente del examen. No cierres el diagnóstico con este borrador.")
-                .plan("1) Preguntar lo que falta. 2) Examinar. 3) Elegir medicamento solo si corresponde. 4) Dejar cuidados por escrito.")
-                .diagnosticoPresuntivo("Pendiente de tu examen")
+                .resumenParaMedico("Puede tratarse de " + (motivo.equals("no informado") ? "un cuadro aún por precisar" : motivo)
+                        + ". Hay que caracterizarlo en el examen y no cerrar diagnóstico solo con el relato.")
+                .enfoqueEnConsulta("Examina la zona que refiere y descarta signos de alarma antes de elegir un medicamento.")
+                .preguntasSugeridas("¿Cómo es el dolor y qué lo dispara?\n¿Ya tomó algo y le sirvió?\n¿Hay fiebre, vómito o un síntoma nuevo?")
+                .medicamentosSugeridos("Analgésico habitual · tabletas · solo si no hay alergia y el examen lo permite")
+                .cuidados("Reposo relativo y volver si aparece fiebre, falta de aire o el dolor se pone intenso.")
+                .subjetivo(recorte.isBlank() ? "No informado" : recorte)
+                .objetivo("No informado. Completar en el examen.")
+                .apreciacion("Impresión pendiente del examen.")
+                .plan("Preguntar lo que falta, examinar y elegir el manejo.")
+                .diagnosticoPresuntivo("Pendiente de examen")
                 .procedimientosSugeridos("No informado")
                 .modoDemo(true).build();
     }
