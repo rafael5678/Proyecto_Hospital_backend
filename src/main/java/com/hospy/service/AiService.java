@@ -457,10 +457,10 @@ public class AiService {
 
     private Optional<String> callLlmSoap(String systemPrompt, String userPrompt) {
         if (hasAnthropic()) {
-            Optional<String> claude = callAnthropic(systemPrompt, userPrompt, 900, null, null, 8);
-            if (claude.isPresent()) return claude;
+            Optional<String> claude = callAnthropic(systemPrompt, userPrompt, 1600, null, null, 12);
+            if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
         }
-        return callGeminiRapido(systemPrompt, userPrompt, true, 900);
+        return callGeminiRapido(systemPrompt, userPrompt, true, 1600);
     }
 
     private Optional<String> callGeminiRapido(String systemPrompt, String userPrompt, boolean json, int maxTokens) {
@@ -1701,16 +1701,18 @@ public class AiService {
     /* ============ 3. Escriba SOAP médico ============== */
     public AiSoapResponse soap(AiSoapRequest req) {
         final String system = """
-                Apoyas al médico en el consultorio. El relato ya está en pantalla: NO lo recopies.
-                No nombres al paciente, no digas el sexo, no repitas días de evolución ni la lista de alergias.
-                resumenParaMedico: 2 o 3 frases de lo que PUEDE estar pasando (hipótesis breve), como colega.
-                enfoqueEnConsulta: 1 o 2 frases de qué examinar ahora. No repitas el resumen.
-                preguntasSugeridas: 3 preguntas que el relato todavía no responde.
-                medicamentosSugeridos: 1 o 2 opciones compatibles con las alergias del relato (si hay alergia a AINE, no pongas ibuprofeno).
-                cuidados: 1 o 2 frases.
-                subjetivo, objetivo, apreciacion y plan: cortos, sin repetir el resumen. Si falta un dato, "No informado".
-                diagnosticoPresuntivo: 3 a 6 palabras.
-                No uses semáforos ni ESI. No inventes signos vitales ni un diagnóstico cerrado. El médico decide.
+                Apoyas al médico en el consultorio, como un colega que sí leyó el caso. El relato ya está en pantalla: no lo copies ni pegues el motivo tal cual ("Puede tratarse de tengo...").
+                Ortografía correcta. Español claro. No nombres, no sexo, no listes otra vez las alergias: úsalas para no sugerir un fármaco prohibido.
+                resumenParaMedico: 4 a 6 frases de lo que PUEDE estar pasando, con 2 o 3 diferenciales y por qué. Habla como colega.
+                enfoqueEnConsulta: 3 a 5 frases de qué examinar ahora (inspección, palpación, movilidad, signos de alarma) y qué decidir en esta cita.
+                preguntasSugeridas: 5 o 6 preguntas que el relato aún no responde, una por línea.
+                medicamentosSugeridos: 3 a 5 opciones concretas, una por línea, formato "nombre · presentación · para qué".
+                Compatibles con alergias. Si hay alergia a AINE, no ibuprofeno ni AINE. Incluye una medida no farmacológica.
+                cuidados: 3 o 4 frases (reposo o movimiento, qué evitar, señales para volver).
+                subjetivo: 2 o 3 frases bien escritas con lo relevante. objetivo: qué buscar en el examen.
+                apreciacion: impresión con diferenciales. plan: 3 o 4 pasos. diagnosticoPresuntivo: una frase clínica, no "pendiente".
+                procedimientosSugeridos: 1 o 2 líneas de lo que valorarías, o "No informado".
+                No inventes signos vitales ni un diagnóstico cerrado. El médico decide.
                 Responde solo JSON. Las listas van como texto, un ítem por línea, nunca como arreglo:
                 {"resumenParaMedico":"...","enfoqueEnConsulta":"...","preguntasSugeridas":"...","medicamentosSugeridos":"...","cuidados":"...",
                  "subjetivo":"...","objetivo":"...","apreciacion":"...","plan":"...","diagnosticoPresuntivo":"...","procedimientosSugeridos":"..."}
@@ -1802,20 +1804,23 @@ public class AiService {
     private AiSoapResponse soapMock(AiSoapRequest req) {
         String t = req.getTranscripcionConsulta();
         String recorte = t == null ? "" : (t.length() > 280 ? t.substring(0, 280) + "..." : t);
-        String motivo = nvl(req.getMotivoInicial());
+        String zona = nvl(req.getMotivoInicial()).toLowerCase();
+        boolean musculo = zona.contains("muscul") || zona.contains("pierna") || zona.contains("espalda")
+                || zona.contains("hombro") || zona.contains("cuello") || zona.contains("rodilla");
         return AiSoapResponse.builder()
-                .resumenParaMedico("Puede tratarse de " + (motivo.equals("no informado") ? "un cuadro aún por precisar" : motivo)
-                        + ". Hay que caracterizarlo en el examen y no cerrar diagnóstico solo con el relato.")
-                .enfoqueEnConsulta("Examina la zona que refiere y descarta signos de alarma antes de elegir un medicamento.")
-                .preguntasSugeridas("¿Cómo es el dolor y qué lo dispara?\n¿Ya tomó algo y le sirvió?\n¿Hay fiebre, vómito o un síntoma nuevo?")
-                .medicamentosSugeridos("Analgésico habitual · tabletas · solo si no hay alergia y el examen lo permite")
-                .cuidados("Reposo relativo y volver si aparece fiebre, falta de aire o el dolor se pone intenso.")
+                .resumenParaMedico(musculo
+                        ? "El cuadro encaja con un dolor musculoesquelético. Hay que pensar en contractura, sobrecarga, esguince o irritación de raíces si hay hormigueo. También descarta trauma, fiebre o déficit motor antes de tratar solo el síntoma."
+                        : "Con lo que cuenta, hay un cuadro que aún hay que caracterizar: origen, tiempo, qué lo dispara y si hay signos de alarma. No cierres el diagnóstico solo con el relato; el examen decide el manejo.")
+                .enfoqueEnConsulta("Inspecciona y palpa la zona, compara con el lado sano, mira movilidad, fuerza, inflamación y calor. Descarta fiebre, déficit neurológico y dolor que no deja apoyar. Con eso decides analgésico, reposo o derivación.")
+                .preguntasSugeridas("¿Cómo empezó y hubo un golpe, un esfuerzo o apareció solo?\n¿El dolor se irradia, hay hormigueo o debilidad?\n¿Qué lo empeora y qué lo calma?\n¿Ya tomó algo, qué dosis y le sirvió?\n¿Hay fiebre, hinchazón o la zona está caliente?\n¿Le había pasado antes?")
+                .medicamentosSugeridos("Paracetamol · tabletas 500 mg · dolor e inflamación leve, si no hay alergia\nRelajante muscular suave · tabletas · si hay contractura y el examen lo permite\nMedida no farmacológica · frío o calor local y movimiento suave · mientras se aclara la causa")
+                .cuidados("Evita cargar peso o el gesto que dispara el dolor las primeras 48 horas, pero no te quedes inmóvil. Camina o mueve la zona con cuidado. Vuelve antes si aparece fiebre, hinchazón marcada, hormigueo que sube o no puedes apoyar.")
                 .subjetivo(recorte.isBlank() ? "No informado" : recorte)
-                .objetivo("No informado. Completar en el examen.")
-                .apreciacion("Impresión pendiente del examen.")
-                .plan("Preguntar lo que falta, examinar y elegir el manejo.")
-                .diagnosticoPresuntivo("Pendiente de examen")
-                .procedimientosSugeridos("No informado")
+                .objetivo("Completar en el examen: inspección, palpación, movilidad y signos de alarma.")
+                .apreciacion("Dolor a caracterizar. Diferenciales según el examen.")
+                .plan("1) Completar preguntas. 2) Examinar. 3) Elegir analgésico solo si no hay alergia. 4) Cuidados y signos de alarma por escrito.")
+                .diagnosticoPresuntivo("Dolor musculoesquelético a estudio")
+                .procedimientosSugeridos("Examen físico dirigido. Imagen solo si hay trauma, déficit o no mejora.")
                 .modoDemo(true).build();
     }
 
@@ -1995,7 +2000,7 @@ public class AiService {
     }
 
     private AiSoapResponse leerSoap(String json) throws Exception {
-        JsonNode n = mapper.readTree(cleanJson(json));
+        JsonNode n = mapper.readTree(extraerJson(json));
         AiSoapResponse r = new AiSoapResponse();
         r.setResumenParaMedico(textoNodo(n, "resumenParaMedico"));
         r.setEnfoqueEnConsulta(textoNodo(n, "enfoqueEnConsulta"));
