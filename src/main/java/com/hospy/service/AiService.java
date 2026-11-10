@@ -57,6 +57,15 @@ public class AiService {
     @Value("${ai.gemini.url:https://generativelanguage.googleapis.com/v1beta/models}")
     private String geminiBaseUrl;
 
+    @Value("${ai.anthropic.api-key:}")
+    private String anthropicKey;
+
+    @Value("${ai.anthropic.model:claude-haiku-5-5}")
+    private String anthropicModel;
+
+    @Value("${ai.anthropic.url:https://api.anthropic.com/v1/messages}")
+    private String anthropicUrl;
+
     @Value("${ai.openai.api-key:}")
     private String apiKey;
 
@@ -87,7 +96,7 @@ public class AiService {
     }
 
     public boolean hasApiKey() {
-        return hasGemini() || hasOpenAi();
+        return hasGemini() || hasAnthropic() || hasOpenAi();
     }
 
     public boolean hasGemini() {
@@ -116,12 +125,20 @@ public class AiService {
                 null, null, false, 8, 12, false).isPresent();
     }
 
+    public boolean hasAnthropic() {
+        return anthropicKey != null && !anthropicKey.isBlank();
+    }
+
     public boolean hasOpenAi() {
         return apiKey != null && !apiKey.isBlank();
     }
 
     public String versionIa() {
+        if (hasGemini() && hasAnthropic()) {
+            return "Hospy AI — Gemini (" + geminiModel + ") + Claude (" + anthropicModel + ")";
+        }
         if (hasGemini()) return "Hospy AI — Gemini (" + geminiModel + ")";
+        if (hasAnthropic()) return "Hospy AI — Claude (" + anthropicModel + ")";
         if (hasOpenAi()) return "Hospy AI — OpenAI (" + model + ")";
         return "Hospy AI — modo demo local";
     }
@@ -220,8 +237,52 @@ public class AiService {
             Optional<String> gemini = callGemini(systemPrompt, userPrompt, null, null, true, ligeroPrimero, maxTokens);
             if (gemini.isPresent()) return gemini;
         }
+        if (hasAnthropic()) {
+            Optional<String> claude = callAnthropic(systemPrompt, userPrompt, maxTokens);
+            if (claude.isPresent()) return claude;
+        }
         if (hasOpenAi()) return callOpenAi(systemPrompt, userPrompt);
         return Optional.empty();
+    }
+
+    private Optional<String> callAnthropic(String systemPrompt, String userPrompt, int maxTokens) {
+        if (!hasAnthropic()) return Optional.empty();
+        try {
+            int tokens = maxTokens > 0 ? maxTokens : 900;
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("model", anthropicModel);
+            body.put("max_tokens", tokens);
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                body.put("system", systemPrompt);
+            }
+            body.put("messages", List.of(Map.of("role", "user", "content", userPrompt)));
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(anthropicUrl))
+                    .timeout(Duration.ofSeconds(Math.max(timeout == null ? 30 : timeout, 20)))
+                    .header("Content-Type", "application/json")
+                    .header("x-api-key", anthropicKey)
+                    .header("anthropic-version", "2023-06-01")
+                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200) {
+                String snippet = resp.body() == null ? "" : resp.body().substring(0, Math.min(280, resp.body().length()));
+                log.warn("Anthropic {} status={} body={}", anthropicModel, resp.statusCode(), snippet);
+                return Optional.empty();
+            }
+            JsonNode parts = mapper.readTree(resp.body()).path("content");
+            StringBuilder texto = new StringBuilder();
+            if (parts.isArray()) {
+                for (JsonNode part : parts) {
+                    String t = part.path("text").asText("");
+                    if (!t.isBlank()) texto.append(t);
+                }
+            }
+            return texto.isEmpty() ? Optional.empty() : Optional.of(cleanJson(texto.toString()));
+        } catch (Exception ex) {
+            log.warn("Excepción Anthropic {}: {}", anthropicModel, ex.getMessage());
+            return Optional.empty();
+        }
     }
 
     private Optional<String> callOpenAi(String systemPrompt, String userPrompt) {
@@ -309,6 +370,10 @@ public class AiService {
                         maxTokens, 20, false);
                 if (out.isPresent()) return out;
             }
+        }
+        if (hasAnthropic()) {
+            Optional<String> claude = callAnthropic(systemPrompt, userPrompt, maxTokens);
+            if (claude.isPresent()) return claude;
         }
         if (hasOpenAi()) return callOpenAi(systemPrompt, userPrompt);
         return Optional.empty();
