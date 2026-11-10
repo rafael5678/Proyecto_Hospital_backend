@@ -458,10 +458,14 @@ public class AiService {
 
     private Optional<String> callLlmSoap(String systemPrompt, String userPrompt) {
         if (hasAnthropic()) {
-            Optional<String> claude = callAnthropic(systemPrompt, userPrompt, 1600, null, null, 12);
-            if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
+            java.util.List<String> modelos = anthropicModels();
+            if (!modelos.isEmpty()) {
+                Optional<String> claude = callAnthropicModel(modelos.get(0), trimmedAnthropicKey(),
+                        systemPrompt, userPrompt, 900, null, null, 8);
+                if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
+            }
         }
-        return geminiEnabled() ? callGeminiRapido(systemPrompt, userPrompt, true, 1600) : Optional.empty();
+        return geminiEnabled() ? callGeminiRapido(systemPrompt, userPrompt, true, 900) : Optional.empty();
     }
 
     private Optional<String> callGeminiRapido(String systemPrompt, String userPrompt, boolean json, int maxTokens) {
@@ -1643,32 +1647,26 @@ public class AiService {
     /* 3. SOAP draft for the doctor. */
     public AiSoapResponse soap(AiSoapRequest req) {
         final String system = """
-                Apoyas al médico en el consultorio, como un colega que sí leyó el caso. El relato ya está en pantalla: no lo copies ni pegues el motivo tal cual ("Puede tratarse de tengo...").
-                Ortografía correcta. Español claro. No nombres, no sexo, no listes otra vez las alergias: úsalas para no sugerir un fármaco prohibido.
-                resumenParaMedico: 4 a 6 frases de lo que PUEDE estar pasando, con 2 o 3 diferenciales y por qué. Habla como colega.
-                enfoqueEnConsulta: 3 a 5 frases de qué examinar ahora (inspección, palpación, movilidad, signos de alarma) y qué decidir en esta cita.
-                preguntasSugeridas: 5 o 6 preguntas que el relato aún no responde, una por línea.
-                medicamentosSugeridos: 3 a 5 opciones concretas, una por línea, formato "nombre · presentación · para qué".
-                Compatibles con alergias. Si hay alergia a AINE, no ibuprofeno ni AINE. Incluye una medida no farmacológica.
-                cuidados: 3 o 4 frases (reposo o movimiento, qué evitar, señales para volver).
-                subjetivo: 2 o 3 frases bien escritas con lo relevante. objetivo: qué buscar en el examen.
-                apreciacion: impresión con diferenciales. plan: 3 o 4 pasos. diagnosticoPresuntivo: una frase clínica, no "pendiente".
-                procedimientosSugeridos: 1 o 2 líneas de lo que valorarías, o "No informado".
-                No inventes signos vitales ni un diagnóstico cerrado. El médico decide.
-                Responde solo JSON. Las listas van como texto, un ítem por línea, nunca como arreglo:
+                Colega en el consultorio. Leíste ESTE caso. Español claro.
+                resumenParaMedico: 4 a 6 frases. Primero lo que TIENE (síntoma, desde cuándo, golpe/foto/alergias si están). Luego qué puede ser y qué recomiendas (examen, fármaco permitido, cuidados). Prohibido "hay que caracterizar" sin nombrar el caso. No copies el relato tal cual.
+                enfoqueEnConsulta: qué examinar AHORA en ESTA zona.
+                preguntasSugeridas: 4 o 5, una por línea, que el relato aún no responde.
+                medicamentosSugeridos: 2 o 3 líneas "nombre · presentación · para qué". Respeta alergias (si hay dipirona, no la des). Incluye una medida no farmacológica.
+                cuidados: lo que le dirías al paciente.
+                subjetivo: 2 frases con lo que cuenta. objetivo, apreciacion, plan, diagnosticoPresuntivo, procedimientosSugeridos: concretos de ESTE caso.
+                No inventes signos vitales. Solo JSON, listas como texto con saltos de línea:
                 {"resumenParaMedico":"...","enfoqueEnConsulta":"...","preguntasSugeridas":"...","medicamentosSugeridos":"...","cuidados":"...",
                  "subjetivo":"...","objetivo":"...","apreciacion":"...","plan":"...","diagnosticoPresuntivo":"...","procedimientosSugeridos":"..."}
                 """;
-        String user = "Nombre paciente: " + nvl(req.getNombrePaciente()) +
-                " | Motivo inicial: " + nvl(req.getMotivoInicial()) +
-                " | Transcripción consulta:\n" + req.getTranscripcionConsulta();
+        String user = "Motivo: " + nvl(req.getMotivoInicial()) +
+                "\nRelato de la cita (síntomas, duración, alergias, piel):\n" + nvl(req.getTranscripcionConsulta());
 
         Optional<String> llm = callLlmSoap(system, user);
-        if (llm.isEmpty()) return soapMock(req);
+        if (llm.isEmpty()) return SoapBrief.from(req);
         try {
-            return leerSoap(llm.get());
+            return SoapBrief.complete(leerSoap(llm.get()), req);
         } catch (Exception ex) {
-            return soapMock(req);
+            return SoapBrief.from(req);
         }
     }
 
@@ -1743,28 +1741,6 @@ public class AiService {
         return n.isBlank() ? t : n;
     }
 
-    private AiSoapResponse soapMock(AiSoapRequest req) {
-        String t = req.getTranscripcionConsulta();
-        String recorte = t == null ? "" : (t.length() > 280 ? t.substring(0, 280) + "..." : t);
-        String zona = nvl(req.getMotivoInicial()).toLowerCase();
-        boolean musculo = zona.contains("muscul") || zona.contains("pierna") || zona.contains("espalda")
-                || zona.contains("hombro") || zona.contains("cuello") || zona.contains("rodilla");
-        return AiSoapResponse.builder()
-                .resumenParaMedico(musculo
-                        ? "El cuadro encaja con un dolor musculoesquelético. Hay que pensar en contractura, sobrecarga, esguince o irritación de raíces si hay hormigueo. También descarta trauma, fiebre o déficit motor antes de tratar solo el síntoma."
-                        : "Con lo que cuenta, hay un cuadro que aún hay que caracterizar: origen, tiempo, qué lo dispara y si hay signos de alarma. No cierres el diagnóstico solo con el relato; el examen decide el manejo.")
-                .enfoqueEnConsulta("Inspecciona y palpa la zona, compara con el lado sano, mira movilidad, fuerza, inflamación y calor. Descarta fiebre, déficit neurológico y dolor que no deja apoyar. Con eso decides analgésico, reposo o derivación.")
-                .preguntasSugeridas("¿Cómo empezó y hubo un golpe, un esfuerzo o apareció solo?\n¿El dolor se irradia, hay hormigueo o debilidad?\n¿Qué lo empeora y qué lo calma?\n¿Ya tomó algo, qué dosis y le sirvió?\n¿Hay fiebre, hinchazón o la zona está caliente?\n¿Le había pasado antes?")
-                .medicamentosSugeridos("Paracetamol · tabletas 500 mg · dolor e inflamación leve, si no hay alergia\nRelajante muscular suave · tabletas · si hay contractura y el examen lo permite\nMedida no farmacológica · frío o calor local y movimiento suave · mientras se aclara la causa")
-                .cuidados("Evita cargar peso o el gesto que dispara el dolor las primeras 48 horas, pero no te quedes inmóvil. Camina o mueve la zona con cuidado. Vuelve antes si aparece fiebre, hinchazón marcada, hormigueo que sube o no puedes apoyar.")
-                .subjetivo(recorte.isBlank() ? "No informado" : recorte)
-                .objetivo("Completar en el examen: inspección, palpación, movilidad y signos de alarma.")
-                .apreciacion("Dolor a caracterizar. Diferenciales según el examen.")
-                .plan("1) Completar preguntas. 2) Examinar. 3) Elegir analgésico solo si no hay alergia. 4) Cuidados y signos de alarma por escrito.")
-                .diagnosticoPresuntivo("Dolor musculoesquelético a estudio")
-                .procedimientosSugeridos("Examen físico dirigido. Imagen solo si hay trauma, déficit o no mejora.")
-                .modoDemo(true).build();
-    }
 
     /* 4. Drug and food interactions. */
     public AiInteractionResponse interactions(AiInteractionRequest req) {
