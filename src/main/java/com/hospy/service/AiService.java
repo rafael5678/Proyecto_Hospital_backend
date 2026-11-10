@@ -446,6 +446,24 @@ public class AiService {
         return Optional.empty();
     }
 
+    /** Admin registration stays on Gemini JSON; Haiku is backup so the form does not lose fields. */
+    private Optional<String> callLlmAdmin(String systemPrompt, String userPrompt) {
+        if (hasGemini()) {
+            String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
+            Optional<String> rapido = callGeminiModel(light, systemPrompt, userPrompt, null, null, true,
+                    900, 8, false);
+            if (rapido.isPresent()) return rapido;
+            Optional<String> flash = callGeminiModel("gemini-3.6-flash", systemPrompt, userPrompt, null, null, true,
+                    900, 10, false);
+            if (flash.isPresent()) return flash;
+        }
+        if (hasAnthropic()) {
+            Optional<String> claude = callAnthropic(systemPrompt, userPrompt, 900, null, null, 8);
+            if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
+        }
+        return Optional.empty();
+    }
+
     /** SOAP summary uses Gemini light first so "Preparando…" does not wait on Haiku or a six-model walk. */
     private Optional<String> callLlmSoap(String systemPrompt, String userPrompt) {
         if (hasGemini()) {
@@ -812,7 +830,7 @@ public class AiService {
         String borradorPrompt = mascara.ocultar(previo == null ? "{}" : writeDraft(cleanForPrompt(previo)));
         String user = "Datos ya entendidos (borrador):\n" + borradorPrompt
                 + "\n\nConversación completa del administrador en este registro:\n" + mascara.ocultar(conversacion.toString());
-        Optional<String> llm = callLlm(system + MascaraDatos.INSTRUCCION, user, true).map(mascara::revelar);
+        Optional<String> llm = callLlmAdmin(system + MascaraDatos.INSTRUCCION, user).map(mascara::revelar);
         AiAdminOperationResponse dichos = localAdminOperation(String.join("\n", historial) + "\n" + instruccion, null);
         AiAdminOperationResponse r = llm.flatMap(this::readAdminResponse).orElse(null);
         boolean entendioGemini = r != null;
@@ -1052,11 +1070,30 @@ public class AiService {
 
     private Optional<AiAdminOperationResponse> readAdminResponse(String json) {
         try {
-            return Optional.of(mapper.readValue(json, AiAdminOperationResponse.class));
+            return Optional.of(mapper.readValue(extraerJson(json), AiAdminOperationResponse.class));
         } catch (Exception ex) {
             log.warn("No se pudo leer el alta de Gemini: {}", ex.getMessage());
             return Optional.empty();
         }
+    }
+
+    private String extractAlergias(String original) {
+        if (original == null || original.isBlank()) return null;
+        String t = sinAcentoAdmin(original).toLowerCase();
+        if (t.matches("(?s).*\\b(no tengo (ninguna|alergias)|ninguna alergia|sin alergias|no tiene alergias|alergias?\\s*[,:]?\\s*(no|ninguna|nada))\\b.*")) {
+            return "Ninguna";
+        }
+        Matcher m = Pattern.compile(
+                "(?i)(?:al[eé]rgic[oa]s?\\s+a|alergias?)\\s*[:\\-]?\\s*(?:a\\s+|al\\s+|es\\s+|son\\s+)?"
+                        + "(?:la\\s+|el\\s+|los\\s+|las\\s+)?(?!ninguna\\b|nada\\b|no\\b)"
+                        + "(.+?)(?=\\s*(?:contacto(?:\\s+de)?\\s+emergencia|tel[eé]fono(?:\\s+de)?\\s+emergencia|observaciones)\\b|[.;\\n]|$)")
+                .matcher(original);
+        String valor = null;
+        while (m.find()) {
+            String hallado = m.group(1) == null ? "" : m.group(1).trim().replaceAll("\\s+", " ");
+            if (!hallado.isBlank()) valor = hallado;
+        }
+        return valor;
     }
 
     private AiAdminOperationResponse readDraft(String borrador) {
@@ -1182,11 +1219,8 @@ public class AiService {
             direccion = extraerGrupo(original, "(?i:vive\\s+en|reside\\s+en|queda\\s+en)\\s+(?:la\\s+|el\\s+)?((?i:calle|carrera|cra\\.?|kr|avenida|av\\.?|transversal|diagonal|manzana|mz|barrio)\\s*[^.;\\n]{2,70}?)(?=\\s+en\\s+\\p{Lu}|,\\s*(?i:su|mi|la|el|y)\\b|[.;\\n]|$)");
         }
         if (direccion != null) r.setDireccion(direccion);
-        String alergia = extraerGrupo(original, "(?i)(?:al[eé]rgic[oa]s?\\s+a|alergias?\\s+(?:a|al|es|son|:))\\s+(?:la\\s+|el\\s+|los\\s+|las\\s+)?(?!ninguna|nada\\b|no\\b)([\\p{L}][\\p{L} ,y]{1,60}?)" + fin);
+        String alergia = extractAlergias(original);
         if (alergia != null) r.setAlergias(alergia);
-        else if (t.matches("(?s).*\\b(no tengo (ninguna|alergias)|ninguna alergia|sin alergias|no tiene alergias|alergias?[,:]?\\s*(no|ninguna|nada))\\b.*")) {
-            r.setAlergias("Ninguna");
-        }
         String contacto = extraerGrupo(original, "(?i)contacto de emergencia\\s*[,:]?\\s*(?:es\\s+)?(?:ah\\s+|eh\\s+)?([\\p{L}][\\p{L} '-]{1,50}?)" + fin);
         if (contacto != null) r.setContactoEmergencia(contacto);
         String telEmergencia = extraerGrupo(original, "(?i)(?:tel[eé]fono de emergencia|contacto de emergencia)[^.\\n\\d]{0,40}?([0-9][0-9 \\-]{6,18}[0-9])");
