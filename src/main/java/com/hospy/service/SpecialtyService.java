@@ -71,6 +71,12 @@ public class SpecialtyService {
         if (plano.equals("nueva") || plano.equals("nuevo") || plano.equals("especialidad") || plano.equals("especializacion")) {
             return null;
         }
+        if (plano.contains("quiero") || plano.contains("necesito") || plano.contains("deseo")) return null;
+        if ((plano.contains("crear") || plano.contains("crea ") || plano.contains("agreg") || plano.contains("registr"))
+                && (plano.contains("especializ") || plano.contains("especialidad"))) {
+            return null;
+        }
+        if (plano.contains("una especializ") || plano.contains("una especialidad")) return null;
         String[] partes = limpio.split(" ");
         StringBuilder titulo = new StringBuilder();
         for (int i = 0; i < partes.length; i++) {
