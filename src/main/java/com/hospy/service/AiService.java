@@ -1616,41 +1616,45 @@ public class AiService {
 
     public AiConsultaSimResponse consultaSimulada(AiConsultaSimRequest req) {
         final String system = """
-                Eres el paciente en el consultorio. Hablas en primera persona, español de Colombia, como un vecino de verdad.
-                Dos a cuatro frases. Ortografía correcta aunque el médico escriba mal. No copies el cuaderno.
-                LEE la última frase del médico y contéstala TODA. Si dice dos cosas (te mando algo y ¿has tenido diarrea?),
-                responde las dos: agradece lo del medicamento y sí o no a la diarrea, con un detalle corto.
-                Ejemplos: "¿vómitos?" → "No doctor, vómitos no he tenido." / "¿diarrea?" → "Sí, como de ayer, no muy seguida" o "No, de eso no."
-                NO contestes "llevo 3 días" si no te preguntaron desde cuándo. NO hables de falta de aire ni de pecho si no te lo preguntaron.
-                Si ya saludaste, no vuelvas a presentarte. Puedes preguntarle algo corto al médico, como en una consulta real.
-                Nunca digas que eres una simulación.
-                Responde solo JSON:
-                {"dicePaciente":"lo que dices en voz alta","pistaParaElMedico":"","medicamentosSugeridos":"","cuidados":""}
+                Eres el paciente. Español de Colombia, primera persona, como un vecino.
+                Lee TODO lo que acaba de decir el médico y contesta eso ahora, en 2 o 3 frases.
+                Si pregunta dos cosas, responde las dos. Ortografía bien. No JSON. No diagnóstico. No digas que eres IA.
                 """;
-        String dialogo = req.getDialogo() == null ? "" : String.join("\n", req.getDialogo());
-        String contexto = nvl(req.getContexto());
-        if (contexto.length() > 700) {
-            contexto = contexto.substring(0, 300) + "\n...\n" + contexto.substring(contexto.length() - 300);
-        }
-        long turnosMedico = dialogo.lines().filter(l -> l.startsWith("Médico:")).count();
-        boolean pedirMeds = turnosMedico >= 3;
-        String user = "Motivo: " + nvl(req.getMotivo()) +
-                "\nNotas (pueden estar mal escritas):\n" + contexto +
-                "\nDiálogo:\n" + (dialogo.isBlank() ? "aún no empieza" : dialogo) +
-                "\nÚltima cosa que dijo el médico (contesta ESTO): " + (req.getPregunta() == null || req.getPregunta().isBlank()
-                ? "saluda y cuenta con tus palabras lo que te trajo" : req.getPregunta());
-        if (pedirMeds) {
-            user += "\nSi ya hay suficiente cuadro, puedes llenar medicamentosSugeridos y cuidados.";
-        }
-        Optional<String> llm = callLlmConsult(system, user, pedirMeds ? 500 : 280);
+        List<String> lineas = req.getDialogo() == null ? List.of() : req.getDialogo();
+        String reciente = lineas.size() <= 8 ? String.join("\n", lineas)
+                : String.join("\n", lineas.subList(lineas.size() - 8, lineas.size()));
+        String pregunta = req.getPregunta() == null || req.getPregunta().isBlank()
+                ? "saluda y cuenta lo que te trajo"
+                : req.getPregunta().trim();
+        String user = "Qué tienes: " + nvl(req.getMotivo()) +
+                "\nÚltimas frases:\n" + (reciente.isBlank() ? "nada aún" : reciente) +
+                "\nEl médico acaba de decir: " + pregunta +
+                "\nContesta eso, en voz alta.";
+        Optional<String> llm = callLlmConsult(system, user, 180);
         if (llm.isEmpty()) return consultaMock(req);
-        try {
-            AiConsultaSimResponse r = leerConsulta(llm.get());
-            if (r.getDicePaciente() == null || r.getDicePaciente().isBlank()) return consultaMock(req);
-            return r;
-        } catch (Exception ex) {
-            return consultaMock(req);
+        return hablarComoPaciente(llm.get(), req);
+    }
+
+    private AiConsultaSimResponse hablarComoPaciente(String bruto, AiConsultaSimRequest req) {
+        String t = bruto == null ? "" : bruto.trim();
+        if (t.contains("\"dicePaciente\"")) {
+            try {
+                AiConsultaSimResponse r = leerConsulta(t);
+                if (r.getDicePaciente() != null && !r.getDicePaciente().isBlank()) return r;
+            } catch (Exception ignored) {
+                /* fall through to plain speech */
+            }
         }
+        t = t.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "").trim();
+        if (t.startsWith("\"") && t.endsWith("\"") && t.length() > 2) t = t.substring(1, t.length() - 1);
+        if (t.isBlank()) return consultaMock(req);
+        return AiConsultaSimResponse.builder()
+                .dicePaciente(t)
+                .pistaParaElMedico("")
+                .medicamentosSugeridos("")
+                .cuidados("")
+                .modoDemo(false)
+                .build();
     }
 
     private AiSoapResponse soapMock(AiSoapRequest req) {
@@ -1879,27 +1883,32 @@ public class AiService {
     private AiConsultaSimResponse consultaMock(AiConsultaSimRequest req) {
         String motivo = nvl(req.getMotivo());
         String contexto = (req.getContexto() == null ? "" : req.getContexto()).toLowerCase();
-        String pregunta = req.getPregunta() == null ? "" : req.getPregunta().toLowerCase();
+        String pregunta = req.getPregunta() == null ? "" : sinAcentoAdmin(req.getPregunta()).toLowerCase();
         java.util.regex.Matcher dias = java.util.regex.Pattern.compile("(\\d+)\\s*d[ií]as").matcher(contexto);
         String cuanto = dias.find() ? dias.group(1) : "";
         String dice;
         if (pregunta.isBlank()) {
             dice = "Doctor, buenos días. Vengo porque " + (motivo.equals("no informado") ? "me siento mal y quiero que me revise." : motivo + ".")
                     + (cuanto.isBlank() ? "" : " Llevo así como " + cuanto + " días.");
+        } else if (pregunta.contains("diarrea") || pregunta.contains("deposicion") || pregunta.contains("estuerzo")) {
+            dice = "Diarrea no he tenido, doctor. Es más el dolor del estómago.";
+        } else if (pregunta.contains("vomit")) {
+            dice = "No, doctor, vómitos no he tenido. Solo el malestar en el estómago.";
         } else if (pregunta.contains("alerg")) {
             dice = "No, doctor. Alergias a medicamentos no tengo, que yo sepa.";
-        } else if (pregunta.contains("tiempo") || pregunta.contains("cuánto") || pregunta.contains("cuanto") || pregunta.contains("desde") || pregunta.contains("día") || pregunta.contains("dia")) {
+        } else if (pregunta.matches(".*\\b(tiempo|cuando|cuanto|desde cuando)\\b.*")
+                || pregunta.contains("hace cuanto") || pregunta.contains("cuantos dia")) {
             dice = cuanto.isBlank()
-                    ? "Empezó hace unos días, doctor. No sabría decirle la hora, pero no es de hoy."
+                    ? "Empezó hace unos días, doctor. No sabría decirle la hora exacta."
                     : "Llevo más o menos " + cuanto + " días, doctor. Empezó de a poco y no se me ha quitado.";
         } else if (pregunta.contains("fiebre") || pregunta.contains("calentura")) {
             dice = "Fiebre no he tenido, doctor. Estoy molesto, pero sin escalofrío.";
-        } else if (pregunta.contains("tom") || pregunta.contains("pastilla") || pregunta.contains("medic")) {
-            dice = "No he tomado nada formulado, doctor. A lo mucho un analgésico de la casa, y el malestar sigue.";
-        } else if (pregunta.contains("sintoma") || pregunta.contains("síntoma") || pregunta.contains("duele") || pregunta.contains("siente")) {
-            dice = "Lo que más siento es " + motivo + ". Me molesta al moverme. Falta de aire o un dolor que se vaya al pecho, no.";
+        } else if (pregunta.contains("pastilla") || pregunta.contains("medicamento") || pregunta.contains("tomado")) {
+            dice = "No he tomado nada formulado, doctor. A lo mucho algo de la casa, y el malestar sigue.";
+        } else if (pregunta.contains("como te siente") || pregunta.contains("como se siente") || pregunta.contains("que siente")) {
+            dice = "Me siento mal del " + (motivo.equals("no informado") ? "malestar" : motivo) + ", doctor. Al moverme se pone peor.";
         } else {
-            dice = "Doctor, sigo con " + motivo + ". Si me pregunta otra cosa, se la cuento como la siento.";
+            dice = "Sí doctor, le escucho. Con esto que me pregunta, le cuento que sigo con " + motivo + " y por eso vine.";
         }
         return AiConsultaSimResponse.builder()
                 .dicePaciente(dice)
