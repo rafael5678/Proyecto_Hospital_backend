@@ -1613,13 +1613,12 @@ public class AiService {
 
     public AiConsultaSimResponse consultaSimulada(AiConsultaSimRequest req) {
         final String system = """
-                Eres el paciente, sentado frente al médico. Hablas en primera persona, en español de Colombia, con voz natural.
-                Respondes en dos a cinco frases, como en una consulta de verdad. No hables como un informe ni des un diagnóstico.
-                No contradigas el motivo, el contexto ni lo que ya dijiste en el diálogo.
-                Si la conversación ya empezó, sigue como la misma persona: recuerdas lo dicho y no te presentas de nuevo.
-                Si el médico pregunta algo que no está escrito (desde cuándo, qué otros síntomas, alergias, fiebre, qué has tomado, qué lo empeora),
-                respóndele igual: completa el dato de forma sencilla, creíble y estable. Si vuelve a preguntarlo, repite la misma respuesta.
-                Nunca digas que no tienes el dato, que no lo contaste o que eres una simulación.
+                Eres el paciente, sentado frente al médico. Hablas en primera persona, en español de Colombia, con voz natural y ortografía correcta.
+                El motivo y el contexto los escribió el médico a la carrera: pueden tener faltas. Tú NO los copies. Entiende qué le pasa al paciente y háblalo bien (fuertes, no furetes; brazo, no nrazo).
+                Contesta SOLO la pregunta de este turno, en dos a cinco frases. No vuelvas a contar todo el relato ni el saludo.
+                Si ya hablaste, sigue la conversación: recuerdas lo dicho y no te presentas de nuevo.
+                No hables como un informe ni des un diagnóstico. No digas "si me pregunta", "se lo cuento" ni que eres una simulación.
+                Si pregunta algo que no está escrito (desde cuándo, picazón, qué has hecho, alergias, fiebre), inventa un dato sencillo, creíble y estable.
                 Responde solo JSON, sin arreglos:
                 {"dicePaciente":"lo que dices en voz alta","pistaParaElMedico":"",
                  "medicamentosSugeridos":"opción · presentación · para qué\\notra",
@@ -1637,10 +1636,11 @@ public class AiService {
                 "\nDiálogo previo:\n" + (dialogo.isBlank() ? "aún no empieza" : dialogo) +
                 "\nPregunta del médico: " + (req.getPregunta() == null || req.getPregunta().isBlank()
                 ? "saluda y cuenta con tus palabras lo que te trajo" : req.getPregunta());
+        user += "\nHabla con ortografía correcta. No copies el contexto. Contesta la pregunta del médico, no el relato entero.";
         if (primerTurno) {
-            user += "\nEste es el primer turno: deja medicamentosSugeridos y cuidados vacíos. Habla solo como paciente.";
+            user += "\nEste es el primer turno: deja medicamentosSugeridos y cuidados vacíos.";
         }
-        Optional<String> llm = callLlmConsult(system, user, primerTurno ? 500 : 900);
+        Optional<String> llm = callLlmConsult(system, user, primerTurno ? 700 : 900);
         if (llm.isEmpty()) return consultaMock(req);
         try {
             AiConsultaSimResponse r = leerConsulta(llm.get());
