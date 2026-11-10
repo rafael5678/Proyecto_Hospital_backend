@@ -446,37 +446,42 @@ public class AiService {
         return Optional.empty();
     }
 
-    /** Admin registration stays on Gemini JSON; Haiku is backup so the form does not lose fields. */
+    /** Claude first. Gemini only if Haiku misses and that model is not in a 429 cooldown. */
     private Optional<String> callLlmAdmin(String systemPrompt, String userPrompt) {
-        if (hasGemini()) {
-            String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
-            Optional<String> rapido = callGeminiModel(light, systemPrompt, userPrompt, null, null, true,
-                    900, 8, false);
-            if (rapido.isPresent()) return rapido;
-            Optional<String> flash = callGeminiModel("gemini-3.6-flash", systemPrompt, userPrompt, null, null, true,
-                    900, 10, false);
-            if (flash.isPresent()) return flash;
-        }
         if (hasAnthropic()) {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, 900, null, null, 8);
             if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
         }
+        return callGeminiRapido(systemPrompt, userPrompt, true, 900);
+    }
+
+    private Optional<String> callLlmSoap(String systemPrompt, String userPrompt) {
+        if (hasAnthropic()) {
+            Optional<String> claude = callAnthropic(systemPrompt, userPrompt, 900, null, null, 8);
+            if (claude.isPresent()) return claude;
+        }
+        return callGeminiRapido(systemPrompt, userPrompt, true, 900);
+    }
+
+    private Optional<String> callGeminiRapido(String systemPrompt, String userPrompt, boolean json, int maxTokens) {
+        if (!hasGemini()) return Optional.empty();
+        String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
+        if (modeloGeminiLibre(light)) {
+            Optional<String> rapido = callGeminiModel(light, systemPrompt, userPrompt, null, null, json,
+                    maxTokens, 8, false);
+            if (rapido.isPresent()) return rapido;
+        }
+        if (modeloGeminiLibre("gemini-3.6-flash")) {
+            Optional<String> flash = callGeminiModel("gemini-3.6-flash", systemPrompt, userPrompt, null, null, json,
+                    maxTokens, 8, false);
+            if (flash.isPresent()) return flash;
+        }
         return Optional.empty();
     }
 
-    /** SOAP summary uses Gemini light first so "Preparando…" does not wait on Haiku or a six-model walk. */
-    private Optional<String> callLlmSoap(String systemPrompt, String userPrompt) {
-        if (hasGemini()) {
-            String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
-            Optional<String> rapido = callGeminiModel(light, systemPrompt, userPrompt, null, null, true,
-                    900, 8, false);
-            if (rapido.isPresent()) return rapido;
-            Optional<String> flash = callGeminiModel("gemini-3.6-flash", systemPrompt, userPrompt, null, null, true,
-                    900, 10, false);
-            if (flash.isPresent()) return flash;
-        }
-        if (hasAnthropic()) return callAnthropic(systemPrompt, userPrompt, 900);
-        return Optional.empty();
+    private boolean modeloGeminiLibre(String modelo) {
+        if (modelo == null || modelo.isBlank()) return false;
+        return modeloAgotadoHasta.getOrDefault(modelo, 0L) <= System.currentTimeMillis();
     }
 
     private void contarUsoHaiku(JsonNode usage) {
@@ -1239,7 +1244,7 @@ public class AiService {
     private String passwordInText(String original) {
         String conector = "\\s*(?:(?:ser[ií]a|ser[aá]|va\\s+a\\s+ser|queda|es|ponle|pon)\\s*)?[:,]?\\s*";
         Matcher m = Pattern.compile("(?i)(?:clave|contrase[nñ]a|password)" + conector
-                + "((?:\\d[\\s-]?){3,19}\\d(?![\\w])|\\S{2,40})").matcher(original);
+                + "((?:\\d[\\s-]?){3,19}\\d(?![\\w])|\\S{2,64})").matcher(original);
         String clave = null;
         while (m.find()) {
             String valor = m.group(1).trim().replaceAll("[,.;:]+$", "");
@@ -1485,10 +1490,13 @@ public class AiService {
         if (enBlanco(r.getEmail()) || !r.getEmail().contains("@")) faltan.add("el correo");
         String claveCorta = null;
         if (enBlanco(r.getPasswordSugerida())) {
-            faltan.add("la contraseña (mínimo 6 caracteres)");
+            faltan.add("la contraseña (entre 6 y 64 caracteres)");
         } else if (r.getPasswordSugerida().length() < 6) {
             claveCorta = r.getPasswordSugerida();
             r.setPasswordSugerida(null);
+        } else if (r.getPasswordSugerida().length() > 64) {
+            r.setPasswordSugerida(null);
+            faltan.add("la contraseña (máximo 64 caracteres)");
         }
         if (medico) {
             r.setAccion("CREAR_MEDICO");
