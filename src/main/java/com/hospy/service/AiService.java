@@ -107,6 +107,11 @@ public class AiService {
         return geminiKey != null && !geminiKey.isBlank();
     }
 
+    /** Gemini quota is exhausted. While Anthropic is set, the product stays on Claude. */
+    private boolean geminiActivo() {
+        return hasGemini() && !hasAnthropic();
+    }
+
     @PostConstruct
     void logEstadoGemini() {
         log.info("Gemini: {} modelo={} | Claude: {}", hasGemini() ? "clave presente" : "SIN CLAVE", geminiModel,
@@ -128,13 +133,11 @@ public class AiService {
         if (hasAnthropic()) {
             haiku = callAnthropic("Responde únicamente con la palabra LISTO.", "LISTO", 64).isPresent();
         }
-        boolean gemini = false;
-        if (hasGemini()) {
-            String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
-            gemini = callGeminiModel(modelo, "Responde únicamente con la palabra LISTO.", "LISTO",
-                    null, null, false, 8, 8, false).isPresent();
-        }
-        return haiku || gemini;
+        if (hasAnthropic()) return haiku;
+        if (!hasGemini()) return haiku;
+        String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
+        return callGeminiModel(modelo, "Responde únicamente con la palabra LISTO.", "LISTO",
+                null, null, false, 8, 8, false).isPresent();
     }
 
     public boolean hasAnthropic() {
@@ -204,13 +207,21 @@ public class AiService {
     }
 
     public String transcriptionStatus() {
-        if (hasGemini()) return "Operativo — Gemini Audio";
+        if (hasAnthropic()) return "Operativo — Claude + voz del navegador";
+        if (geminiActivo()) return "Operativo — Gemini Audio";
         if (hasOpenAi()) return "Operativo — Whisper";
-        return "Demo (navegador Web Speech API)";
+        return "Voz del navegador (Chrome o Edge)";
     }
 
     public AiTranscriptionResponse transcribe(byte[] audio, String contentType) {
-        if (hasGemini()) {
+        if (hasAnthropic()) {
+            Optional<String> claude = transcribeWithAnthropic(audio, contentType);
+            if (claude.isPresent() && !claude.get().isBlank()) {
+                return new AiTranscriptionResponse(claude.get().trim(), false,
+                        "Transcripción Claude lista para revisión.");
+            }
+        }
+        if (geminiActivo()) {
             Optional<String> gemini = transcribeWithGemini(audio, contentType);
             if (gemini.isPresent() && !gemini.get().isBlank()) {
                 return new AiTranscriptionResponse(gemini.get().trim(), false,
@@ -218,10 +229,8 @@ public class AiService {
             }
         }
         if (!hasOpenAi()) {
-            String mensaje = hasGemini()
-                    ? "Gemini no pudo transcribir el audio en este momento; puede estar en su límite de uso. Intenta en un minuto o escribe los datos."
-                    : "Configura GEMINI_API_KEY para transcribir el audio. También puedes usar la voz del navegador.";
-            return new AiTranscriptionResponse("", true, mensaje);
+            return new AiTranscriptionResponse("", true,
+                    "No se entendió el audio. Habla en Chrome o Edge, o escribe los datos.");
         }
         String boundary = "HospyBoundary" + UUID.randomUUID();
         try {
@@ -276,7 +285,7 @@ public class AiService {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, maxTokens);
             if (claude.isPresent()) return claude;
         }
-        if (hasGemini()) {
+        if (geminiActivo()) {
             Optional<String> gemini = callGemini(systemPrompt, userPrompt, null, null, true, ligeroPrimero, maxTokens);
             if (gemini.isPresent()) return gemini;
         }
@@ -437,7 +446,7 @@ public class AiService {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, tokens, null, null, 7);
             if (claude.isPresent()) return claude;
         }
-        if (hasGemini()) {
+        if (geminiActivo()) {
             String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
             Optional<String> gemini = callGeminiModel(modelo, systemPrompt, userPrompt, null, null, false,
                     tokens, 6, false);
@@ -452,7 +461,7 @@ public class AiService {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, 900, null, null, 8);
             if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
         }
-        return callGeminiRapido(systemPrompt, userPrompt, true, 900);
+        return geminiActivo() ? callGeminiRapido(systemPrompt, userPrompt, true, 900) : Optional.empty();
     }
 
     private Optional<String> callLlmSoap(String systemPrompt, String userPrompt) {
@@ -460,11 +469,11 @@ public class AiService {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, 1600, null, null, 12);
             if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
         }
-        return callGeminiRapido(systemPrompt, userPrompt, true, 1600);
+        return geminiActivo() ? callGeminiRapido(systemPrompt, userPrompt, true, 1600) : Optional.empty();
     }
 
     private Optional<String> callGeminiRapido(String systemPrompt, String userPrompt, boolean json, int maxTokens) {
-        if (!hasGemini()) return Optional.empty();
+        if (!geminiActivo()) return Optional.empty();
         String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
         if (modeloGeminiLibre(light)) {
             Optional<String> rapido = callGeminiModel(light, systemPrompt, userPrompt, null, null, json,
@@ -597,6 +606,84 @@ public class AiService {
         String mime = (contentType == null || contentType.isBlank()) ? "audio/webm" : contentType.split(";")[0].trim();
         String prompt = "Transcribe fielmente este audio clínico en español. Devuelve solo el texto hablado, sin comentarios.";
         return callGemini(prompt, "Transcribe el audio.", mime, Base64.getEncoder().encodeToString(audio), false);
+    }
+
+    private Optional<String> transcribeWithAnthropic(byte[] audio, String contentType) {
+        if (!hasAnthropic() || audio == null || audio.length == 0) return Optional.empty();
+        String mime = (contentType == null || contentType.isBlank()) ? "audio/webm" : contentType.split(";")[0].trim();
+        String formato = formatoAudio(mime);
+        String b64 = Base64.getEncoder().encodeToString(audio);
+        String prompt = "Transcribe fielmente este audio en español. Devuelve solo el texto hablado, sin comentarios.";
+        String clave = claveAnthropic();
+        for (String modelo : anthropicModels()) {
+            Optional<String> out = enviarAudioAnthropic(modelo, clave, prompt, mime, formato, b64);
+            if (out.isPresent()) return out;
+        }
+        return Optional.empty();
+    }
+
+    private static String formatoAudio(String mime) {
+        String t = mime == null ? "" : mime.toLowerCase();
+        if (t.contains("wav")) return "wav";
+        if (t.contains("mpeg") || t.contains("mp3")) return "mp3";
+        if (t.contains("ogg")) return "ogg";
+        if (t.contains("mp4") || t.contains("m4a")) return "mp4";
+        return "webm";
+    }
+
+    private Optional<String> enviarAudioAnthropic(String modelo, String clave, String prompt,
+                                                  String mime, String formato, String b64) {
+        List<Object> formas = List.of(
+                List.of(
+                        Map.of("type", "text", "text", prompt),
+                        Map.of("type", "input_audio", "input_audio", Map.of("data", b64, "format", formato))
+                ),
+                List.of(
+                        Map.of("type", "audio", "source", Map.of(
+                                "type", "base64",
+                                "media_type", mime == null || mime.isBlank() ? "audio/webm" : mime,
+                                "data", b64)),
+                        Map.of("type", "text", "text", prompt)
+                )
+        );
+        for (Object content : formas) {
+            try {
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("model", modelo);
+                body.put("max_tokens", 400);
+                body.put("messages", List.of(Map.of("role", "user", "content", content)));
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(anthropicUrl))
+                        .timeout(Duration.ofSeconds(12))
+                        .header("Content-Type", "application/json")
+                        .header("x-api-key", clave)
+                        .header("anthropic-version", "2023-06-01")
+                        .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8))
+                        .build();
+                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                if (resp.statusCode() != 200) {
+                    String snippet = resp.body() == null ? "" : resp.body().substring(0, Math.min(180, resp.body().length()));
+                    log.warn("Anthropic audio {} status={} body={}", modelo, resp.statusCode(), snippet);
+                    continue;
+                }
+                JsonNode root = mapper.readTree(resp.body());
+                contarUsoHaiku(root.path("usage"));
+                JsonNode parts = root.path("content");
+                StringBuilder texto = new StringBuilder();
+                if (parts.isArray()) {
+                    for (JsonNode part : parts) {
+                        String tipo = part.path("type").asText("");
+                        if ("thinking".equals(tipo) || "redacted_thinking".equals(tipo)) continue;
+                        String t = part.path("text").asText("");
+                        if (!t.isBlank()) texto.append(t);
+                    }
+                }
+                if (!texto.isEmpty()) return Optional.of(texto.toString().trim());
+            } catch (Exception ex) {
+                log.warn("Excepción Anthropic audio {}: {}", modelo, ex.getMessage());
+            }
+        }
+        return Optional.empty();
     }
 
     private Optional<String> extractGeminiText(String raw) {
@@ -2197,12 +2284,12 @@ public class AiService {
             Optional<String> claude = callAnthropic(system, user, 900, hayFoto ? mime : null, hayFoto ? b64 : null, 8);
             if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
         }
-        if (hasGemini() && hayFoto) {
+        if (geminiActivo() && hayFoto) {
             String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
             Optional<String> vision = callGeminiModel(light, system, user, mime, b64, true, 900, 10, false);
             if (vision.isPresent()) return vision;
         }
-        if (hasGemini()) {
+        if (geminiActivo()) {
             String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
             Optional<String> rapido = callGeminiModel(light, system, user, null, null, true, 900, 8, false);
             if (rapido.isPresent()) return rapido;
