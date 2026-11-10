@@ -127,8 +127,8 @@ public class UserService {
         if (clave.chars().anyMatch(Character::isWhitespace)) {
             throw new RuntimeException("La contraseña no lleva espacios.");
         }
-        if (clave.length() < 6 || clave.length() > 64) {
-            throw new RuntimeException("La clave debe tener entre 6 y 64 caracteres.");
+        if (clave.length() < 6 || clave.length() > 12) {
+            throw new RuntimeException("La clave debe tener entre 6 y 12 caracteres.");
         }
         return clave;
     }

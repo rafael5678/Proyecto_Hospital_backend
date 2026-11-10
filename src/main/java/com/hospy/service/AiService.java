@@ -1244,7 +1244,7 @@ public class AiService {
     private String passwordInText(String original) {
         String conector = "\\s*(?:(?:ser[ií]a|ser[aá]|va\\s+a\\s+ser|queda|es|ponle|pon)\\s*)?[:,]?\\s*";
         Matcher m = Pattern.compile("(?i)(?:clave|contrase[nñ]a|password)" + conector
-                + "((?:\\d[\\s-]?){3,19}\\d(?![\\w])|\\S{2,64})").matcher(original);
+                + "((?:\\d[\\s-]?){3,19}\\d(?![\\w])|\\S{2,40})").matcher(original);
         String clave = null;
         while (m.find()) {
             String valor = m.group(1).trim().replaceAll("[,.;:]+$", "");
@@ -1489,14 +1489,15 @@ public class AiService {
         if (enBlanco(r.getNombre())) faltan.add("el nombre completo");
         if (enBlanco(r.getEmail()) || !r.getEmail().contains("@")) faltan.add("el correo");
         String claveCorta = null;
+        String claveLarga = null;
         if (enBlanco(r.getPasswordSugerida())) {
-            faltan.add("la contraseña (entre 6 y 64 caracteres)");
+            faltan.add("la contraseña (entre 6 y 12 caracteres)");
         } else if (r.getPasswordSugerida().length() < 6) {
             claveCorta = r.getPasswordSugerida();
             r.setPasswordSugerida(null);
-        } else if (r.getPasswordSugerida().length() > 64) {
+        } else if (r.getPasswordSugerida().length() > 12) {
+            claveLarga = r.getPasswordSugerida();
             r.setPasswordSugerida(null);
-            faltan.add("la contraseña (máximo 64 caracteres)");
         }
         if (medico) {
             r.setAccion("CREAR_MEDICO");
@@ -1538,6 +1539,14 @@ public class AiService {
             String resto = faltan.isEmpty() ? "" : " También me falta " + joinMissing(faltan) + ".";
             r.setMensaje("La contraseña «" + claveCorta + "» es muy corta: tiene " + claveCorta.length()
                     + " caracteres y debe tener mínimo 6. Dime otra, por ejemplo " + claveCorta + "2026." + resto);
+            return r;
+        }
+        if (claveLarga != null) {
+            r.setAccion("PREGUNTAR");
+            String ejemplo = claveLarga.length() > 12 ? claveLarga.substring(0, 12) : claveLarga;
+            String resto = faltan.isEmpty() ? "" : " También me falta " + joinMissing(faltan) + ".";
+            r.setMensaje("La contraseña «" + claveLarga + "» es muy larga: tiene " + claveLarga.length()
+                    + " caracteres y el máximo es 12. Dime una de 6 a 12, por ejemplo «" + ejemplo + "»." + resto);
             return r;
         }
         if (!faltan.isEmpty()) {

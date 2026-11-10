@@ -31,8 +31,8 @@ public class AuthService {
             throw new RuntimeException("El email ya está registrado");
         }
         String clave = passwordWithoutSpaces(req.getPassword());
-        if (clave.length() < 6 || clave.length() > 64) {
-            throw new RuntimeException("La contraseña debe tener entre 6 y 64 caracteres.");
+        if (clave.length() < 6 || clave.length() > 12) {
+            throw new RuntimeException("La contraseña debe tener entre 6 y 12 caracteres.");
         }
         User usuario = User.builder()
                 .nombre(req.getNombre())
