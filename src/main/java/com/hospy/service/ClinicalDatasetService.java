@@ -25,8 +25,8 @@ public class ClinicalDatasetService {
     }
 
     public AiTriageResponse triage(AiTriageRequest req) {
-        String texto = (nvl(req.getSintomas()) + " " + nvl(req.getDuracion()) + " " + nvl(req.getAntecedentes()))
-                .toLowerCase(Locale.ROOT);
+        /* Match the complaint, not allergies (hongos in the allergy list is not a skin case). */
+        String texto = nvl(req.getSintomas()).toLowerCase(Locale.ROOT);
         JsonNode filas = markOneRead("datasets/triage-esi-mts.json");
         JsonNode extra = markOneRead("datasets/triage-medqa-medmcqa.json");
         String sev = "Verde";

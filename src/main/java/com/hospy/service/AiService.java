@@ -709,13 +709,15 @@ public class AiService {
         String fotoB64 = extraerBase64(req.getImagenBase64());
         boolean hayFoto = !fotoB64.isBlank();
         final String system = """
-                Eres el médico de orientación de Hospy. Analiza ESTE caso con tu criterio y con la foto si existe.
-                La pista de datasets es solo una referencia: si el relato o la imagen dicen otra cosa, corrígela.
+                Eres el médico de orientación de Hospy. Hablas claro, cercano y en español de Colombia, sin tecnicismos.
+                Analiza ESTE caso. Las alergias y antecedentes NO eligen la especialidad: si duele la barriga y es alérgico a hongos, NO es Dermatología.
+                La especialidad sale de los SÍNTOMAS. Dermatología solo si describe un problema de piel.
+                Hipotetiza con cuidado según lo que contó: indigestión o algo que comió si es barriga; tensión o cuadro viral si es muscular; resfriado si es tos. Nunca lo presentes como diagnóstico cerrado.
                 Habla solo de lo que el paciente contó o de lo que se ve en la foto. No inventes falta de aire, dolor de pecho ni otros síntomas que no mencionó.
-                El resumen debe tener 4 a 6 oraciones en español: qué refirió, desde cuándo, antecedentes, qué se aprecia en la foto si hay, por qué ese nivel y que agende ya la especialidad mientras espera.
-                Las recomendaciones deben decir qué vigilar de SUS molestias y qué hacer hasta la cita.
-                especialidadRecomendada tiene que ser UNA de las especialidades disponibles, la que mejor encaje con ESTE relato.
-                Si hay dolor de cabeza y además una lesión de piel, explica las dos cosas y elige la especialidad más urgente.
+                resumen: 4 a 6 oraciones. Qué siente, desde cuándo, qué puede estar pasando, por qué esa especialidad y un aviso concreto de SUS alergias si las hay.
+                recomendaciones: qué hacer hasta la cita (comida ligera, hidratación, reposo según el caso) y qué no tomar por las alergias. Cuándo ir a urgencias.
+                hallazgos: 2 a 4 frases cortas de ESTE caso (síntoma, duración, alergias).
+                especialidadRecomendada: UNA de las especialidades disponibles.
                 NUNCA menciones datasets, modelos, ESI, HAM10000 ni precisión.
                 Devuelve UNICAMENTE JSON:
                 {"severidad":"Rojo|Naranja|Amarillo|Verde|Azul","escala":"orientación 5 niveles","nivelEsi":1,
@@ -740,14 +742,14 @@ public class AiService {
                 especialidadesDisponibles(),
                 datasets.contextoTriageParaGemini(req));
 
-        Optional<String> llm = consultarGemini(system, user, req.getImagenBase64());
+        Optional<String> llm = consultarGemini(system, user, req.getImagenBase64(), 1400, 12);
         if (llm.isEmpty()) return orientarSinGemini(local, req);
         try {
             AiTriageResponse r = mapper.readValue(extraerJson(llm.get()), AiTriageResponse.class);
             r.setModoDemo(false);
             normalizarTriage(r, local);
             completarOrientacion(r, local, req);
-            return limpiarTriage(r, req.getSintomas());
+            return limpiarTriage(r, req);
         } catch (Exception ex) {
             log.warn("No se pudo leer JSON de triage Gemini: {}", ex.getMessage());
             return orientarSinGemini(local, req);
@@ -2269,11 +2271,15 @@ public class AiService {
 
     /** Claude first (text or photo). Gemini light only if Haiku does not answer. */
     private Optional<String> consultarGemini(String system, String user, String imagenDataUrl) {
+        return consultarGemini(system, user, imagenDataUrl, 900, 8);
+    }
+
+    private Optional<String> consultarGemini(String system, String user, String imagenDataUrl, int tokens, int espera) {
         String b64 = extraerBase64(imagenDataUrl);
         String mime = mimeDeDataUrl(imagenDataUrl);
         boolean hayFoto = !b64.isBlank();
         if (hasAnthropic()) {
-            Optional<String> claude = callAnthropic(system, user, 900, hayFoto ? mime : null, hayFoto ? b64 : null, 8);
+            Optional<String> claude = callAnthropic(system, user, tokens, hayFoto ? mime : null, hayFoto ? b64 : null, espera);
             if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
         }
         if (geminiActivo() && hayFoto) {
@@ -2324,68 +2330,187 @@ public class AiService {
         return out;
     }
 
-    private static AiTriageResponse limpiarTriage(AiTriageResponse r, String sintomas) {
+    private static AiTriageResponse limpiarTriage(AiTriageResponse r, AiTriageRequest req) {
+        corregirEspecialidad(r, req);
         r.setHallazgos(sinJerga(r.getHallazgos()));
         r.setEscala("Orientación clínica");
-        if (r.getResumen() != null && esJergaTecnica(r.getResumen())) {
+        if (r.getResumen() != null && (esJergaTecnica(r.getResumen()) || resumenCanned(r.getResumen()))) {
             r.setResumen(null);
         }
         if (r.getRecomendaciones() != null && esJergaTecnica(r.getRecomendaciones())) {
             r.setRecomendaciones(null);
         }
         if (r.getResumen() == null || r.getResumen().isBlank()) {
-            r.setResumen(orientacionDesdeRelato(sintomas, r));
+            r.setResumen(orientacionDesdeRelato(req, r));
         }
-        if (r.getRecomendaciones() == null || r.getRecomendaciones().isBlank()) {
-            r.setRecomendaciones(cuidadosHastaLaCita(r));
+        if (r.getRecomendaciones() == null || r.getRecomendaciones().isBlank() || cuidadosPobres(r.getRecomendaciones())) {
+            r.setRecomendaciones(cuidadosHastaLaCita(req, r));
+        }
+        if (r.getHallazgos() == null || r.getHallazgos().isEmpty()) {
+            r.setHallazgos(hallazgosDelCaso(req, r));
         }
         return r;
     }
 
     private AiTriageResponse orientarSinGemini(AiTriageResponse local, AiTriageRequest req) {
         normalizarTriage(local, local);
+        corregirEspecialidad(local, req);
         local.setModoDemo(true);
-        local.setResumen(orientacionDesdeRelato(req.getSintomas(), local));
-        local.setRecomendaciones(cuidadosHastaLaCita(local));
-        return limpiarTriage(local, req.getSintomas());
+        local.setResumen(orientacionDesdeRelato(req, local));
+        local.setRecomendaciones(cuidadosHastaLaCita(req, local));
+        local.setHallazgos(hallazgosDelCaso(req, local));
+        return limpiarTriage(local, req);
     }
 
     private static void completarOrientacion(AiTriageResponse r, AiTriageResponse local, AiTriageRequest req) {
-        if (resumenPobre(r.getResumen(), local.getResumen())) {
-            r.setResumen(orientacionDesdeRelato(req.getSintomas(), r));
+        corregirEspecialidad(r, req);
+        if (resumenPobre(r.getResumen(), local == null ? null : local.getResumen())) {
+            r.setResumen(orientacionDesdeRelato(req, r));
         }
         if (cuidadosPobres(r.getRecomendaciones())) {
-            r.setRecomendaciones(cuidadosHastaLaCita(r));
+            r.setRecomendaciones(cuidadosHastaLaCita(req, r));
         }
     }
 
     private static boolean resumenPobre(String resumen, String local) {
-        if (resumen == null || resumen.isBlank() || esJergaTecnica(resumen)) return true;
+        if (resumen == null || resumen.isBlank() || esJergaTecnica(resumen) || resumenCanned(resumen)) return true;
         String t = resumen.trim();
         if (local != null && t.equalsIgnoreCase(local.trim())) return true;
         String l = t.toLowerCase();
-        return t.length() < 110 && l.startsWith("severidad ") && l.contains("hacia ");
+        return t.length() < 140 && (l.startsWith("severidad ") || l.startsWith("cuentas:"));
+    }
+
+    private static boolean resumenCanned(String resumen) {
+        String t = resumen.toLowerCase();
+        return t.contains("lo adecuado es agendar") || t.startsWith("cuentas:");
     }
 
     private static boolean cuidadosPobres(String rec) {
         if (rec == null || rec.isBlank() || esJergaTecnica(rec)) return true;
         String t = rec.trim().toLowerCase();
-        return t.equals("si empeora, hay fiebre o el dolor es intenso, consulta de forma presencial.");
+        return t.equals("si empeora, hay fiebre o el dolor es intenso, consulta de forma presencial.")
+                || (t.startsWith("reserva la cita con") && t.contains("no te automediques con productos a los que seas alérgico"));
     }
 
-    private static String orientacionDesdeRelato(String sintomas, AiTriageResponse r) {
-        String relato = sintomas == null || sintomas.isBlank() ? "lo que describes" : sintomas.trim();
+    private static void corregirEspecialidad(AiTriageResponse r, AiTriageRequest req) {
+        String s = dato(req == null ? null : req.getSintomas()).toLowerCase();
+        if (s.isBlank()) return;
+        String esp = r.getEspecialidadRecomendada() == null ? "" : r.getEspecialidadRecomendada().toLowerCase();
+        boolean piel = contiene(s, "piel", "mancha", "roncha", "granito", "acné", "acne", "erupcion", "erupción",
+                "sarpullido", "urticaria", "lesión cut", "lesion cut");
+        if (digestivo(s) && !piel && (esp.contains("dermat") || esp.isBlank())) {
+            r.setEspecialidadRecomendada("Gastroenterología");
+            if (r.getSeveridad() == null || r.getSeveridad().isBlank() || "Verde".equalsIgnoreCase(r.getSeveridad()) || "Azul".equalsIgnoreCase(r.getSeveridad())) {
+                r.setSeveridad("Amarillo");
+            }
+            if (r.getNivelEsi() == null || r.getNivelEsi() >= 4) r.setNivelEsi(3);
+            if (r.getPrioridad() == null || r.getPrioridad() <= 3) r.setPrioridad(5);
+            if (r.getResumen() != null && r.getResumen().toLowerCase().contains("dermatolog")) r.setResumen(null);
+            if (r.getRecomendaciones() != null && r.getRecomendaciones().toLowerCase().contains("dermatolog")) r.setRecomendaciones(null);
+        }
+    }
+
+    private static String orientacionDesdeRelato(AiTriageRequest req, AiTriageResponse r) {
+        String sintomas = dato(req.getSintomas());
+        String duracion = dato(req.getDuracion());
+        String ant = dato(req.getAntecedentes());
         String sev = r.getSeveridad() == null ? "Amarillo" : r.getSeveridad();
         String esp = r.getEspecialidadRecomendada() == null ? "Medicina General" : r.getEspecialidadRecomendada();
-        return "Cuentas: " + relato + ". La orientación es " + sev
-                + " y lo adecuado es agendar " + esp
-                + " ahora, mientras esperas la cita. Vigila si esa molestia aumenta, aparece fiebre o la zona que señalas se extiende; si pasa, acude antes de forma presencial.";
+        String s = sintomas.toLowerCase();
+        StringBuilder sb = new StringBuilder();
+        if (digestivo(s)) {
+            sb.append("Ese dolor de barriga");
+            if (!duracion.isBlank()) sb.append(" que llevas ").append(duracion);
+            sb.append(" puede ser una indigestión, gastritis o algo que comiste y no te sentó.");
+            if (contiene(s, "muscul", "cuerpo", "espalda", "lumb")) {
+                sb.append(" Los dolores musculares a veces acompañan cuando hay un cuadro viral o el cuerpo está inflamado.");
+            }
+        } else if (contiene(s, "muscul", "cuerpo cortado", "lumbago", "espalda")) {
+            sb.append("Ese dolor muscular");
+            if (!duracion.isBlank()) sb.append(" de ").append(duracion);
+            sb.append(" puede ser una contractura, cansancio o un cuadro viral leve.");
+        } else if (contiene(s, "cabeza", "cefalea", "mareo")) {
+            sb.append("Ese malestar de cabeza");
+            if (!duracion.isBlank()) sb.append(" (").append(duracion).append(")");
+            sb.append(" conviene valorarlo; a veces es tensión, migraña o falta de hidratación.");
+        } else if (contiene(s, "tos", "gripe", "resfriado", "garganta")) {
+            sb.append("Lo que describes encaja con un cuadro respiratorio leve");
+            if (!duracion.isBlank()) sb.append(" de ").append(duracion);
+            sb.append(".");
+        } else {
+            sb.append("Por lo que cuentas");
+            if (!sintomas.isBlank()) sb.append(" (").append(sintomas).append(")");
+            if (!duracion.isBlank()) sb.append(", ").append(duracion);
+            sb.append(", vale la pena orientarlo con un médico.");
+        }
+        if (!ant.isBlank()) {
+            sb.append(" Ten mucho cuidado con tus alergias y antecedentes (").append(ant)
+                    .append("): no te automediques ni tomes nada que te hayas prohibido.");
+        }
+        sb.append(" La orientación es ").append(sev).append(". Agenda ").append(esp)
+                .append(" ahora; el médico confirma qué está pasando.");
+        return sb.toString();
     }
 
-    private static String cuidadosHastaLaCita(AiTriageResponse r) {
+    private static String cuidadosHastaLaCita(AiTriageRequest req, AiTriageResponse r) {
         String esp = r.getEspecialidadRecomendada() == null ? "la especialidad sugerida" : r.getEspecialidadRecomendada();
-        return "Reserva la cita con " + esp
-                + " sin dejar pasar el cuadro. Hasta ver al médico, descansa, anota cómo evoluciona lo que sientes y no te automediques con productos a los que seas alérgico. Si el dolor se vuelve mucho más fuerte, hay fiebre o la lesión crece, ve a urgencias antes de la cita.";
+        String s = dato(req.getSintomas()).toLowerCase();
+        String ant = dato(req.getAntecedentes());
+        StringBuilder sb = new StringBuilder();
+        sb.append("Reserva ").append(esp).append(" sin dejar pasar el cuadro. ");
+        if (digestivo(s)) {
+            sb.append("Hasta la cita, come liviano (caldo, arroz, banano), toma agua de a sorbos y evita frituras, picante y alcohol. ");
+        } else {
+            sb.append("Hasta ver al médico, descansa, hidrátate y anota cómo evoluciona lo que sientes. ");
+        }
+        if (!ant.isBlank()) {
+            String a = ant.toLowerCase();
+            sb.append("Por tus alergias (").append(ant).append(") no te automediques con lo que te da reacción. ");
+            if (contiene(a, "dipirona", "metamizol")) sb.append("No tomes dipirona ni metamizol. ");
+            if (contiene(a, "huevo")) sb.append("Evita huevo y lo que lo lleve. ");
+            if (contiene(a, "látex", "latex")) sb.append("Avisa que eres alérgico al látex. ");
+            if (contiene(a, "hongo", "moho")) sb.append("Evita alimentos con moho y ambientes húmedos. ");
+        } else {
+            sb.append("No te automediques. ");
+        }
+        if (digestivo(s)) {
+            sb.append("Si el dolor se clava, el abdomen se pone duro, hay fiebre, vómito con sangre o no puedes tomar líquidos, ve a urgencias antes de la cita.");
+        } else {
+            sb.append("Si el dolor se vuelve mucho más fuerte, hay fiebre o te cuesta respirar, ve a urgencias antes de la cita.");
+        }
+        return sb.toString();
+    }
+
+    private static List<String> hallazgosDelCaso(AiTriageRequest req, AiTriageResponse r) {
+        List<String> h = new ArrayList<>();
+        String s = dato(req.getSintomas());
+        String dur = dato(req.getDuracion());
+        String ant = dato(req.getAntecedentes());
+        if (!s.isBlank()) h.add("Lo que sientes: " + s);
+        if (!dur.isBlank()) h.add("Desde hace: " + dur);
+        if (!ant.isBlank()) h.add("Alergias y antecedentes a cuidar: " + ant);
+        if (r.getEspecialidadRecomendada() != null) {
+            h.add("Especialidad que encaja con este relato: " + r.getEspecialidadRecomendada());
+        }
+        return h;
+    }
+
+    private static boolean digestivo(String s) {
+        return contiene(s, "barriga", "abdomen", "estomago", "estómago", "panza", "gastr", "indigest",
+                "vomit", "vómit", "diarrea", "nause", "náuse", "acidez", "agruras", "colico", "cólico", "empacho");
+    }
+
+    private static boolean contiene(String texto, String... claves) {
+        if (texto == null || texto.isBlank()) return false;
+        for (String c : claves) {
+            if (c != null && !c.isBlank() && texto.contains(c.toLowerCase())) return true;
+        }
+        return false;
+    }
+
+    private static String dato(String s) {
+        if (s == null || s.isBlank() || "no informado".equalsIgnoreCase(s.trim())) return "";
+        return s.trim();
     }
 
     private static AiDermatologyResponse limpiarPiel(AiDermatologyResponse r, AiDermatologyRequest req) {
