@@ -31,21 +31,21 @@ public class AiController {
         ));
     }
 
-    /* Pacientes y médicos pueden triagear */
+    /* Patients and doctors can run triage. */
     @PostMapping("/triage")
     @PreAuthorize("hasAnyRole('PACIENTE','MEDICO','ADMIN')")
     public ResponseEntity<AiTriageResponse> triage(@Valid @RequestBody AiTriageRequest req) {
         return ResponseEntity.ok(aiService.triage(req));
     }
 
-    /* Pacientes y médicos pueden evaluar lesiones */
+    /* Patients and doctors can review a skin lesion. */
     @PostMapping("/dermatology")
     @PreAuthorize("hasAnyRole('PACIENTE','MEDICO','ADMIN')")
     public ResponseEntity<AiDermatologyResponse> dermatology(@Valid @RequestBody AiDermatologyRequest req) {
         return ResponseEntity.ok(aiService.dermatology(req));
     }
 
-    /* Solo médicos y admins pueden usar el escriba SOAP clínico */
+    /* Doctors and admins can ask for a SOAP draft. */
     @PostMapping("/soap")
     @PreAuthorize("hasAnyRole('MEDICO','ADMIN')")
     public ResponseEntity<AiSoapResponse> soap(@Valid @RequestBody AiSoapRequest req) {
@@ -78,7 +78,7 @@ public class AiController {
         return ResponseEntity.ok(aiService.transcribe(audio.getBytes(), tipo));
     }
 
-    /* Pacientes, médicos y admins pueden revisar interacciones */
+    /* Signed-in users can check drug and food interactions. */
     @PostMapping("/interactions")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<AiInteractionResponse> interactions(@Valid @RequestBody AiInteractionRequest req) {
@@ -91,7 +91,7 @@ public class AiController {
         return ResponseEntity.ok(aiService.adminOperation(req));
     }
 
-    /* Todos (autenticados) pueden triangular precios */
+    /* Signed-in users can compare pharmacy prices. */
     @PostMapping("/prices")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<AiPricesResponse> prices(@Valid @RequestBody AiPricesRequest req) {

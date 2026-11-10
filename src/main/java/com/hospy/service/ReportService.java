@@ -18,9 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * HU-15: Reportes con recursividad en agregarMesRecursivo.
- */
+/** Monthly hospital counts. Months are filled with recursion in addMonth. */
 @Service
 @RequiredArgsConstructor
 public class ReportService {
@@ -53,7 +51,7 @@ public class ReportService {
         long prioridadAlta = citaRepository.countHighPriority();
         long reprogramadasIA = cambioCitaRepository.countByRealizadoPor("SISTEMA_IA");
 
-        /* Distribución de severidad */
+        /* Severity counts for the admin board. */
         Map<String, Long> distribucion = new LinkedHashMap<>();
         for (String sev : List.of("Rojo", "Naranja", "Amarillo", "Verde", "Azul")) {
             distribucion.put(sev, 0L);

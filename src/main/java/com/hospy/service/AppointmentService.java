@@ -47,7 +47,7 @@ public class AppointmentService {
                 .orElseThrow(() -> new RuntimeException("Médico no encontrado"));
         horarioService.ensureWorkSchedule(medico);
 
-        /* ====== Repriorización automática por gravedad ====== */
+        /* If a more serious case arrives, the lighter visit is moved. */
         String aviso = null;
         int nuevaPrioridad = req.getTriagePrioridad() != null ? req.getTriagePrioridad() : 5;
         LocalDateTime desde = alignToHalfHour(ColombiaTime.now().plusMinutes(5));
@@ -70,17 +70,17 @@ public class AppointmentService {
                 medico, inicioBloque, finBloque, estadosActivos);
 
         if (!solapadas.isEmpty()) {
-            Appointment existente = solapadas.get(0); /* la de menor prioridad */
+            Appointment existente = solapadas.get(0); /* lowest stored priority */
             int prioridadExistente = existente.getTriagePrioridad() != null ? existente.getTriagePrioridad() : 5;
 
             if (nuevaPrioridad > prioridadExistente) {
-                /* El nuevo paciente es más grave → desplazar al existente */
+                /* New visit is more serious: move the one already booked. */
                 LocalDateTime nuevaFechaDesplazado = findNextOpenSlot(medico, finBloque);
                 var fechaAnterior = existente.getFechaHora();
                 existente.setFechaHora(nuevaFechaDesplazado);
                 citaRepository.save(existente);
 
-                /* Registrar cambio */
+                /* Persist the reschedule. */
                 AppointmentChange cambio = new AppointmentChange();
                 cambio.setCita(existente);
                 cambio.setFechaAnterior(fechaAnterior);
@@ -91,7 +91,7 @@ public class AppointmentService {
                 cambio.setRealizadoPor("SISTEMA_IA");
                 cambioCitaRepository.save(cambio);
 
-                /* Notificar al paciente desplazado y al médico */
+                /* Tell the moved patient and the doctor. */
                 var notif = notificacionCitaService.notifyReprioritization(
                         existente, fechaAnterior, nuevaPrioridad, nvl(req.getTriageSeveridad()));
                 cambio.setCorreoPacienteEnviado(notif.patientSent());
@@ -113,7 +113,7 @@ public class AppointmentService {
                 .motivo(req.getMotivo())
                 .notas(req.getNotas())
                 .estado(AppointmentStatus.PENDIENTE)
-                /* Campos IA Triage NLP (todos opcionales) */
+                /* Optional triage copy from booking. */
                 .triageSeveridad(req.getTriageSeveridad())
                 .triageNivelEsi(req.getTriageNivelEsi())
                 .triagePrioridad(req.getTriagePrioridad())
@@ -122,7 +122,7 @@ public class AppointmentService {
                 .triageSintomas(req.getTriageSintomas())
                 .triageDuracion(req.getTriageDuracion())
                 .triageAntecedentes(req.getTriageAntecedentes())
-                /* Campos IA Dermatología CNN (todos opcionales) */
+                /* Optional skin-review copy from booking. */
                 .dermatologiaReportaIa(req.getDermatologiaReportaIa())
                 .dermatologiaScoreRiesgo(req.getDermatologiaScoreRiesgo())
                 .dermatologiaTopDiagnostico(req.getDermatologiaTopDiagnostico())

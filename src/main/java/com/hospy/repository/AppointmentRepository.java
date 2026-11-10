@@ -37,7 +37,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
                                @Param("estados") List<AppointmentStatus> estados,
                                @Param("citaExcluida") Long citaExcluida);
 
-    /* ====== Métricas IA para admin ====== */
+    /* Counts for the admin assistant board. */
     @Query("SELECT COUNT(c) FROM Appointment c WHERE c.triageSeveridad IS NOT NULL")
     long countWithTriage();
 
@@ -52,7 +52,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
             "WHERE c.triageSeveridad IS NOT NULL GROUP BY c.triageSeveridad")
     List<Object[]> distribucionSeveridad();
 
-    /* ====== Repriorización: buscar cita solapada con menor prioridad ====== */
+    /* Overlapping visit with the lowest priority, used when a serious case arrives. */
     @Query("SELECT c FROM Appointment c WHERE c.medico = :medico AND c.estado IN :estados " +
             "AND c.fechaHora >= :inicio AND c.fechaHora < :fin " +
             "ORDER BY COALESCE(c.triagePrioridad, 5) ASC")

@@ -9,17 +9,17 @@ import java.util.Map;
 @Data
 @Builder
 public class AiMetricsResponse {
-    /* Conteos reales de BD */
+    /* Counts from stored visits. */
     private long totalCitas;
     private long citasConTriage;
     private long citasConEvaluacionPiel;
     private long citasPrioridadAlta;
     private long citasReprogramadasPorIA;
 
-    /* Distribución de severidad triage */
+    /* Triage severity map. */
     private Map<String, Long> distribucionSeveridad;  /* Rojo:2, Naranja:5, Amarillo:12... */
 
-    /* Estado de IA */
+    /* Assistant status shown on the admin board. */
     private boolean apiKeyActiva;
     private String versionIa;
     private String estadoWhisper;
@@ -29,7 +29,7 @@ public class AiMetricsResponse {
     private String estadoInteracciones;
     private String estadoPrecios;
 
-    /* Seguridad */
+    /* Idle timeouts in seconds. */
     private int timeoutMedicoSeg;
     private int timeoutAdminSeg;
 }

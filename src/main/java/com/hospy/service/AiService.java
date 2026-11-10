@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Talks to Gemini and local fallbacks for clinical help. */
+/** Talks to Claude, Gemini, and local clinical fallbacks. */
 @Slf4j
 @Service
 public class AiService {
@@ -108,14 +108,14 @@ public class AiService {
     }
 
     /** Gemini quota is exhausted. While Anthropic is set, the product stays on Claude. */
-    private boolean geminiActivo() {
+    private boolean geminiEnabled() {
         return hasGemini() && !hasAnthropic();
     }
 
     @PostConstruct
-    void logEstadoGemini() {
-        log.info("Gemini: {} modelo={} | Claude: {}", hasGemini() ? "clave presente" : "SIN CLAVE", geminiModel,
-                hasAnthropic() ? anthropicModel : "SIN CLAVE");
+    void warmProviders() {
+        log.info("Gemini: {} model={} | Claude: {}", hasGemini() ? "key present" : "NO KEY", geminiModel,
+                hasAnthropic() ? anthropicModel : "NO KEY");
         Thread t = new Thread(() -> {
             try {
                 warmupConsult();
@@ -141,10 +141,10 @@ public class AiService {
     }
 
     public boolean hasAnthropic() {
-        return !claveAnthropic().isBlank();
+        return !trimmedAnthropicKey().isBlank();
     }
 
-    private String claveAnthropic() {
+    private String trimmedAnthropicKey() {
         return anthropicKey == null ? "" : anthropicKey.replaceAll("\\s+", "");
     }
 
@@ -164,7 +164,7 @@ public class AiService {
     public String versionIa() {
         if (hasAnthropic()) {
             return "Hospy AI — Claude Haiku 5.5 · " + haikuLlamadas.get() + " respuestas · ~"
-                    + gastoHaikuUsd() + " USD esta sesión";
+                    + haikuSpendUsd() + " USD esta sesión";
         }
         if (hasGemini()) return "Hospy AI — Gemini (" + geminiModel + ")";
         if (hasOpenAi()) return "Hospy AI — OpenAI (" + model + ")";
@@ -176,11 +176,11 @@ public class AiService {
         out.put("llamadas", String.valueOf(haikuLlamadas.get()));
         out.put("tokensEntrada", String.valueOf(haikuEntrada.get()));
         out.put("tokensSalida", String.valueOf(haikuSalida.get()));
-        out.put("usdEstimado", gastoHaikuUsd());
+        out.put("usdEstimado", haikuSpendUsd());
         return out;
     }
 
-    private String gastoHaikuUsd() {
+    private String haikuSpendUsd() {
         double usd = (haikuEntrada.get() / 1_000_000.0) * 0.10 + (haikuSalida.get() / 1_000_000.0) * 0.50;
         return String.format(java.util.Locale.US, "%.4f", usd);
     }
@@ -207,13 +207,13 @@ public class AiService {
     }
 
     public String transcriptionStatus() {
-        if (geminiActivo()) return "Operativo — Gemini Audio";
+        if (geminiEnabled()) return "Operativo — Gemini Audio";
         if (hasOpenAi()) return "Operativo — Whisper";
         return "Voz del navegador (Chrome o Edge)";
     }
 
     public AiTranscriptionResponse transcribe(byte[] audio, String contentType) {
-        if (geminiActivo()) {
+        if (geminiEnabled()) {
             Optional<String> gemini = transcribeWithGemini(audio, contentType);
             if (gemini.isPresent() && !gemini.get().isBlank()) {
                 return new AiTranscriptionResponse(gemini.get().trim(), false,
@@ -257,13 +257,13 @@ public class AiService {
         }
     }
 
-    private void addPart(ByteArrayOutputStream body, String boundary, String nombre, String valor) throws Exception {
+    private void addPart(ByteArrayOutputStream body, String boundary, String name, String value) throws Exception {
         body.write(("--" + boundary + "\r\n" +
-                "Content-Disposition: form-data; name=\"" + nombre + "\"\r\n\r\n" +
-                valor + "\r\n").getBytes(StandardCharsets.UTF_8));
+                "Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n" +
+                value + "\r\n").getBytes(StandardCharsets.UTF_8));
     }
 
-    /* ============ Llamada genérica al LLM (Gemini primero, OpenAI de respaldo) ============== */
+    /* Generic LLM call: Claude first, then Gemini, then OpenAI. */
     private Optional<String> callLlm(String systemPrompt, String userPrompt) {
         return callLlm(systemPrompt, userPrompt, false);
     }
@@ -277,7 +277,7 @@ public class AiService {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, maxTokens);
             if (claude.isPresent()) return claude;
         }
-        if (geminiActivo()) {
+        if (geminiEnabled()) {
             Optional<String> gemini = callGemini(systemPrompt, userPrompt, null, null, true, ligeroPrimero, maxTokens);
             if (gemini.isPresent()) return gemini;
         }
@@ -293,7 +293,7 @@ public class AiService {
                                            String mime, String base64, int timeoutSeconds) {
         if (!hasAnthropic()) return Optional.empty();
         int tokens = Math.max(maxTokens > 0 ? maxTokens : 512, 256);
-        String clave = claveAnthropic();
+        String clave = trimmedAnthropicKey();
         int espera = timeoutSeconds > 0 ? timeoutSeconds : 5;
         for (String modelo : anthropicModels()) {
             Optional<String> out = callAnthropicModel(modelo, clave, systemPrompt, userPrompt, tokens, mime, base64, espera);
@@ -438,7 +438,7 @@ public class AiService {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, tokens, null, null, 7);
             if (claude.isPresent()) return claude;
         }
-        if (geminiActivo()) {
+        if (geminiEnabled()) {
             String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
             Optional<String> gemini = callGeminiModel(modelo, systemPrompt, userPrompt, null, null, false,
                     tokens, 6, false);
@@ -453,7 +453,7 @@ public class AiService {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, 900, null, null, 8);
             if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
         }
-        return geminiActivo() ? callGeminiRapido(systemPrompt, userPrompt, true, 900) : Optional.empty();
+        return geminiEnabled() ? callGeminiRapido(systemPrompt, userPrompt, true, 900) : Optional.empty();
     }
 
     private Optional<String> callLlmSoap(String systemPrompt, String userPrompt) {
@@ -461,11 +461,11 @@ public class AiService {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, 1600, null, null, 12);
             if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
         }
-        return geminiActivo() ? callGeminiRapido(systemPrompt, userPrompt, true, 1600) : Optional.empty();
+        return geminiEnabled() ? callGeminiRapido(systemPrompt, userPrompt, true, 1600) : Optional.empty();
     }
 
     private Optional<String> callGeminiRapido(String systemPrompt, String userPrompt, boolean json, int maxTokens) {
-        if (!geminiActivo()) return Optional.empty();
+        if (!geminiEnabled()) return Optional.empty();
         String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
         if (modeloGeminiLibre(light)) {
             Optional<String> rapido = callGeminiModel(light, systemPrompt, userPrompt, null, null, json,
@@ -600,84 +600,6 @@ public class AiService {
         return callGemini(prompt, "Transcribe el audio.", mime, Base64.getEncoder().encodeToString(audio), false);
     }
 
-    private Optional<String> transcribeWithAnthropic(byte[] audio, String contentType) {
-        if (!hasAnthropic() || audio == null || audio.length == 0) return Optional.empty();
-        String mime = (contentType == null || contentType.isBlank()) ? "audio/webm" : contentType.split(";")[0].trim();
-        String formato = formatoAudio(mime);
-        String b64 = Base64.getEncoder().encodeToString(audio);
-        String prompt = "Transcribe fielmente este audio en español. Devuelve solo el texto hablado, sin comentarios.";
-        String clave = claveAnthropic();
-        for (String modelo : anthropicModels()) {
-            Optional<String> out = enviarAudioAnthropic(modelo, clave, prompt, mime, formato, b64);
-            if (out.isPresent()) return out;
-        }
-        return Optional.empty();
-    }
-
-    private static String formatoAudio(String mime) {
-        String t = mime == null ? "" : mime.toLowerCase();
-        if (t.contains("wav")) return "wav";
-        if (t.contains("mpeg") || t.contains("mp3")) return "mp3";
-        if (t.contains("ogg")) return "ogg";
-        if (t.contains("mp4") || t.contains("m4a")) return "mp4";
-        return "webm";
-    }
-
-    private Optional<String> enviarAudioAnthropic(String modelo, String clave, String prompt,
-                                                  String mime, String formato, String b64) {
-        List<Object> formas = List.of(
-                List.of(
-                        Map.of("type", "text", "text", prompt),
-                        Map.of("type", "input_audio", "input_audio", Map.of("data", b64, "format", formato))
-                ),
-                List.of(
-                        Map.of("type", "audio", "source", Map.of(
-                                "type", "base64",
-                                "media_type", mime == null || mime.isBlank() ? "audio/webm" : mime,
-                                "data", b64)),
-                        Map.of("type", "text", "text", prompt)
-                )
-        );
-        for (Object content : formas) {
-            try {
-                Map<String, Object> body = new LinkedHashMap<>();
-                body.put("model", modelo);
-                body.put("max_tokens", 400);
-                body.put("messages", List.of(Map.of("role", "user", "content", content)));
-                HttpRequest req = HttpRequest.newBuilder()
-                        .uri(URI.create(anthropicUrl))
-                        .timeout(Duration.ofSeconds(12))
-                        .header("Content-Type", "application/json")
-                        .header("x-api-key", clave)
-                        .header("anthropic-version", "2023-06-01")
-                        .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8))
-                        .build();
-                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-                if (resp.statusCode() != 200) {
-                    String snippet = resp.body() == null ? "" : resp.body().substring(0, Math.min(180, resp.body().length()));
-                    log.warn("Anthropic audio {} status={} body={}", modelo, resp.statusCode(), snippet);
-                    continue;
-                }
-                JsonNode root = mapper.readTree(resp.body());
-                contarUsoHaiku(root.path("usage"));
-                JsonNode parts = root.path("content");
-                StringBuilder texto = new StringBuilder();
-                if (parts.isArray()) {
-                    for (JsonNode part : parts) {
-                        String tipo = part.path("type").asText("");
-                        if ("thinking".equals(tipo) || "redacted_thinking".equals(tipo)) continue;
-                        String t = part.path("text").asText("");
-                        if (!t.isBlank()) texto.append(t);
-                    }
-                }
-                if (!texto.isEmpty()) return Optional.of(texto.toString().trim());
-            } catch (Exception ex) {
-                log.warn("Excepción Anthropic audio {}: {}", modelo, ex.getMessage());
-            }
-        }
-        return Optional.empty();
-    }
-
     private Optional<String> extractGeminiText(String raw) {
         try {
             JsonNode root = mapper.readTree(raw);
@@ -703,10 +625,10 @@ public class AiService {
         return t.trim();
     }
 
-    /* ============ 1. Triage / NLP sintomas -> ESI/MTS ============== */
+    /* 1. Patient triage from the complaint. */
     public AiTriageResponse triage(AiTriageRequest req) {
         AiTriageResponse local = datasets.triage(req);
-        String fotoB64 = extraerBase64(req.getImagenBase64());
+        String fotoB64 = extractBase64(req.getImagenBase64());
         boolean hayFoto = !fotoB64.isBlank();
         final String system = """
                 Eres el médico de orientación de Hospy. Hablas claro, cercano y en español de Colombia, sin tecnicismos.
@@ -739,57 +661,24 @@ public class AiService {
                 nvl(req.getAntecedentes()),
                 req.getEdadPaciente() == null ? "no informado" : req.getEdadPaciente().toString(),
                 hayFoto ? "sí, descríbela y úsala en el resumen" : "no",
-                especialidadesDisponibles(),
+                availableSpecialties(),
                 datasets.contextoTriageParaGemini(req));
 
-        Optional<String> llm = consultarGemini(system, user, req.getImagenBase64(), 1400, 12);
-        if (llm.isEmpty()) return orientarSinGemini(local, req);
+        Optional<String> llm = askMultimodal(system, user, req.getImagenBase64(), 1400, 12);
+        if (llm.isEmpty()) return TriageOrientation.withoutModel(local, req);
         try {
-            AiTriageResponse r = mapper.readValue(extraerJson(llm.get()), AiTriageResponse.class);
+            AiTriageResponse r = mapper.readValue(extractJson(llm.get()), AiTriageResponse.class);
             r.setModoDemo(false);
-            normalizarTriage(r, local);
-            completarOrientacion(r, local, req);
-            return limpiarTriage(r, req);
+            TriageOrientation.normalize(r, local);
+            TriageOrientation.completeAfterModel(r, local, req);
+            return TriageOrientation.polish(r, req);
         } catch (Exception ex) {
-            log.warn("No se pudo leer JSON de triage Gemini: {}", ex.getMessage());
-            return orientarSinGemini(local, req);
+            log.warn("Could not parse triage JSON: {}", ex.getMessage());
+            return TriageOrientation.withoutModel(local, req);
         }
     }
 
-    private AiTriageResponse triageMock(AiTriageRequest req) {
-        String s = req.getSintomas().toLowerCase();
-        String sev = "Verde";
-        int esi = 4;
-        int prio = 4;
-        String esp = "Medicina General";
-        List<String> hallazgos = new ArrayList<>(List.of("Triage simulado MTS-ESI v1"));
-        if (s.contains("dolor en el pecho") || s.contains("infarto") || s.contains("desmayo")) {
-            sev = "Rojo"; esi = 1; prio = 10; esp = "Cardiología";
-            hallazgos.add("Bandera roja: sintomatología cardíaca aguda");
-        } else if (s.contains("fiebre alta") || s.contains("dificultad para respirar") || s.contains("disnea")) {
-            sev = "Naranja"; esi = 2; prio = 8; esp = "Neumología";
-            hallazgos.add("Posible compromiso respiratorio");
-        } else if (s.contains("dolor de cabeza") || s.contains("cefalea") || s.contains("mareo")) {
-            sev = "Amarillo"; esi = 3; prio = 6; esp = "Neurología";
-            hallazgos.add("Síntomas neurológicos");
-        } else if (s.contains("piel") || s.contains("mancha") || s.contains("lesión") || s.contains("acné")) {
-            sev = "Verde"; esi = 4; prio = 3; esp = "Dermatología";
-            hallazgos.add("Sospecha de afección cutánea");
-        } else if (s.contains("gripe") || s.contains("resfriado") || s.contains("tos")) {
-            sev = "Azul"; esi = 5; prio = 2;
-            hallazgos.add("Cuadro respiratorio viral probable");
-        }
-        return AiTriageResponse.builder()
-                .severidad(sev).escala("ESI/MTS 5 niveles").nivelEsi(esi)
-                .especialidadRecomendada(esp).prioridad(prio).hallazgos(hallazgos)
-                .recomendaciones(MODO_DEMO_SIN_API_KEY +
-                        " Acude a la especialidad y guarda este triaje para el profesional de salud.")
-                .resumen("Triaje simulado basado en palabras clave para: " + req.getSintomas())
-                .modoDemo(true)
-                .build();
-    }
-
-    /* ============ 2. Dermatología (Gemini + modelo de imagen + datasets) ============== */
+    /* 2. Skin review: model plus local classifier. */
     public AiDermatologyResponse dermatology(AiDermatologyRequest req) {
         boolean hayImg = req.getImagenBase64() != null && !req.getImagenBase64().isBlank();
         boolean hayTxt = (req.getDescripcion() != null && !req.getDescripcion().isBlank())
@@ -813,53 +702,21 @@ public class AiService {
                  "caracteristicasObservadas":["lo que se ve en la foto o se describe"],
                  "recomendaciones":"cuidados concretos hasta ver al médico","advertencia":""}
                 """;
-        String user = userVisionPiel(req) + "\nPista interna, no la copies: " + datasets.contextoPielParaGemini(req);
-        Optional<String> llm = consultarGemini(system, user, req.getImagenBase64());
-        if (llm.isEmpty()) return limpiarPiel(local, req);
+        String user = skinVisionPrompt(req) + "\nPista interna, no la copies: " + datasets.contextoPielParaGemini(req);
+        Optional<String> llm = askMultimodal(system, user, req.getImagenBase64());
+        if (llm.isEmpty()) return polishSkin(local, req);
         try {
-            AiDermatologyResponse r = mapper.readValue(extraerJson(llm.get()), AiDermatologyResponse.class);
+            AiDermatologyResponse r = mapper.readValue(extractJson(llm.get()), AiDermatologyResponse.class);
             r.setModoDemo(false);
-            return limpiarPiel(fusionarPiel(r, local), req);
+            return polishSkin(mergeSkin(r, local), req);
         } catch (Exception ex) {
-            log.warn("No se pudo leer JSON de dermatología Gemini: {}", ex.getMessage());
-            return limpiarPiel(local, req);
+            log.warn("Could not parse dermatology JSON: {}", ex.getMessage());
+            return polishSkin(local, req);
         }
     }
 
-    private AiDermatologyResponse dermatologyFallback(AiDermatologyRequest req) {
-        String desc = nvl(req.getDescripcion()).toLowerCase();
-        String riesgo = "BAJO";
-        double score = 0.18;
-        List<String> dd = List.of("Dermatitis alérgica", "Picadura de insecto");
-        List<String> car = new ArrayList<>(List.of("Evaluación por texto (sin imagen)"));
-        if (desc.contains("cambio de color") || desc.contains("asimetría") || desc.contains("sangra") || desc.contains("ulcera")) {
-            riesgo = "ALTO"; score = 0.78;
-            dd = List.of("Lesión pigmentada sospechosa (regla ABCD)", "Melanoma en DDx", "Carcinoma basocelular");
-            car.add("Signos de alarma: asimetría, bordes irregulares, cambio rápido");
-        } else if (desc.contains("roncha") || desc.contains("urticaria") || desc.contains("picazón")) {
-            riesgo = "MEDIO"; score = 0.42;
-            dd = List.of("Urticaria", "Dermatitis atópica", "Reacción medicamentosa");
-            car.add("Patrón pruriginoso, posible mediadores inflamatorios");
-        } else if (desc.contains("grano") || desc.contains("acné") || desc.contains("pústula")) {
-            riesgo = "BAJO"; score = 0.22;
-            dd = List.of("Acné vulgar grado I-II", "Foliculitis");
-        }
-        return AiDermatologyResponse.builder()
-                .nivelRiesgo(riesgo).scoreRiesgo(score)
-                .diagnosticosDiferenciales(dd).caracteristicasObservadas(car)
-                .recomendaciones(MODO_DEMO_SIN_API_KEY +
-                        " Aplica protección solar FPS 50+ y consulta dermatología presencial (biopsia si persiste).")
-                .advertencia("ADVERTENCIA: Este pre-diagnóstico NO sustituye consulta con dermatólogo.")
-                .modoDemo(true).build();
-    }
 
-    private static final List<String> ESPECIALIDADES_ADMIN = List.of(
-            "Medicina General", "Cardiología", "Neurología", "Dermatología", "Traumatología",
-            "Ortopedia", "Pediatría", "Ginecología", "Oftalmología", "Otorrinolaringología",
-            "Gastroenterología", "Endocrinología", "Urología", "Psiquiatría", "Neumología",
-            "Medicina Interna", "Reumatología", "Oncología", "Nefrología", "Infectología");
-
-    /* ============ Admin: alta de médico o paciente por conversación ============== */
+    /* Admin: create a doctor or patient from chat. */
     public AiAdminOperationResponse adminOperation(AiAdminOperationRequest req) {
         String instruccion = req.getInstruccion() == null ? "" : req.getInstruccion().trim();
         AiAdminOperationResponse previo = readDraft(req.getBorrador());
@@ -912,11 +769,11 @@ public class AiService {
         int n = 1;
         for (String anterior : historial) conversacion.append(n++).append(". ").append(anterior.trim()).append('\n');
         conversacion.append(n).append(". ").append(instruccion);
-        MascaraDatos mascara = new MascaraDatos();
-        String borradorPrompt = mascara.ocultar(previo == null ? "{}" : writeDraft(cleanForPrompt(previo)));
+        DataMask mask = new DataMask();
+        String borradorPrompt = mask.hide(previo == null ? "{}" : writeDraft(cleanForPrompt(previo)));
         String user = "Datos ya entendidos (borrador):\n" + borradorPrompt
-                + "\n\nConversación completa del administrador en este registro:\n" + mascara.ocultar(conversacion.toString());
-        Optional<String> llm = callLlmAdmin(system + MascaraDatos.INSTRUCCION, user).map(mascara::revelar);
+                + "\n\nConversación completa del administrador en este registro:\n" + mask.hide(conversacion.toString());
+        Optional<String> llm = callLlmAdmin(system + DataMask.HINT, user).map(mask::reveal);
         AiAdminOperationResponse dichos = localAdminOperation(String.join("\n", historial) + "\n" + instruccion, null);
         AiAdminOperationResponse r = llm.flatMap(this::readAdminResponse).orElse(null);
         boolean entendioGemini = r != null;
@@ -932,11 +789,11 @@ public class AiService {
     }
 
     /**
-     * Gemini corta la respuesta (finishReason SPII) cuando ve documentos, teléfonos y correos juntos.
-     * Se le envían marcadores y los valores reales se restauran en la respuesta.
+     * Models sometimes cut the JSON when they see ID numbers, phones and emails together.
+     * Placeholders go in, real values come back after the reply.
      */
-    private static final class MascaraDatos {
-        static final String INSTRUCCION = """
+    private static final class DataMask {
+        static final String HINT = """
 
                 Los correos y los números largos (documento, teléfono, licencia) llegan como marcadores [[CORREO_1]] o [[NUM_1]].
                 Copia el marcador exacto en el campo que corresponda, por ejemplo "documento":"[[NUM_2]]". No los cambies ni los inventes.
@@ -946,7 +803,7 @@ public class AiService {
         private final Map<String, String> valores = new LinkedHashMap<>();
         private final Map<String, String> marcadores = new LinkedHashMap<>();
 
-        String ocultar(String texto) {
+        String hide(String texto) {
             if (texto == null) return "";
             String resultado = replaceMatch(texto, CORREO, "CORREO", v -> v.toLowerCase());
             return replaceMatch(resultado, NUMERO, "NUM", v -> v.replaceAll("[^0-9]", ""));
@@ -969,7 +826,7 @@ public class AiService {
             return sb.toString();
         }
 
-        String revelar(String texto) {
+        String reveal(String texto) {
             if (texto == null) return null;
             String resultado = texto;
             List<String> claves = new ArrayList<>(valores.keySet());
@@ -992,7 +849,7 @@ public class AiService {
         Matcher partes = Pattern.compile("(?i)((?:correo(?:\\s+electr[oó]nico)?|e-?mail|gmail)\\s*[,:]?\\s*(?:es\\s+)?)((?:[\\p{L}\\d._-]+\\s+){0,3}[\\p{L}\\d._-]+)\\s*@\\s*").matcher(t);
         StringBuilder sb = new StringBuilder();
         while (partes.find()) {
-            String usuario = sinAcentoAdmin(partes.group(2)).replaceAll("\\s+", "").toLowerCase();
+            String usuario = foldAccents(partes.group(2)).replaceAll("\\s+", "").toLowerCase();
             partes.appendReplacement(sb, Matcher.quoteReplacement(partes.group(1) + usuario + "@"));
         }
         partes.appendTail(sb);
@@ -1000,7 +857,7 @@ public class AiService {
     }
 
     private boolean isCancellation(String texto) {
-        String t = texto == null ? "" : sinAcentoAdmin(texto).toLowerCase();
+        String t = texto == null ? "" : foldAccents(texto).toLowerCase();
         return t.contains("cancela") || t.contains("olvidalo") || t.contains("empezar de nuevo");
     }
 
@@ -1052,7 +909,7 @@ public class AiService {
 
     private void normalizeRegistration(AiAdminOperationResponse r) {
         if (r.getEmail() != null) {
-            String e = sinAcentoAdmin(r.getEmail()).toLowerCase()
+            String e = foldAccents(r.getEmail()).toLowerCase()
                     .replaceAll("\\s*arroba\\s*", "@").replaceAll("\\s*punto\\s*", ".").replaceAll("\\s+", "");
             if (!e.contains("@")) {
                 for (String dominio : DOMINIOS_CORREO) {
@@ -1073,7 +930,7 @@ public class AiService {
             String tel = r.getTelefonoEmergencia().replaceAll("[^0-9]", "");
             r.setTelefonoEmergencia(tel.isEmpty() ? null : tel);
         }
-        if (!enBlanco(r.getContactoEmergencia()) && enBlanco(r.getTelefonoEmergencia())) {
+        if (!isMissing(r.getContactoEmergencia()) && isMissing(r.getTelefonoEmergencia())) {
             String soloDigitos = r.getContactoEmergencia().replaceAll("[^0-9]", "");
             if (soloDigitos.length() >= 7 && r.getContactoEmergencia().replaceAll("[0-9\\s-]", "").isBlank()) {
                 r.setTelefonoEmergencia(soloDigitos);
@@ -1090,12 +947,12 @@ public class AiService {
             }
         }
         if (r.getGenero() != null) {
-            String g = sinAcentoAdmin(r.getGenero()).toLowerCase();
+            String g = foldAccents(r.getGenero()).toLowerCase();
             if (g.startsWith("masc") || g.equals("hombre") || g.equals("m")) r.setGenero("Masculino");
             else if (g.startsWith("fem") || g.equals("mujer") || g.equals("f")) r.setGenero("Femenino");
         }
         if (r.getAlergias() != null) {
-            String a = sinAcentoAdmin(r.getAlergias()).toLowerCase();
+            String a = foldAccents(r.getAlergias()).toLowerCase();
             if (a.matches(".*\\b(ninguna|ninguno|no tengo|no tiene|sin alergias|no aplica)\\b.*")) r.setAlergias("Ninguna");
         }
     }
@@ -1105,7 +962,7 @@ public class AiService {
 
     private String dateFromText(String texto) {
         if (texto == null || texto.isBlank()) return null;
-        String t = sinAcentoAdmin(texto).toLowerCase().replace("setiembre", "septiembre");
+        String t = foldAccents(texto).toLowerCase().replace("setiembre", "septiembre");
         if (t.matches("\\s*\\d{4}-\\d{2}-\\d{2}\\s*")) return t.trim();
         String fecha = null;
         Matcher iso = Pattern.compile("(\\d{4})-(\\d{2})-(\\d{2})").matcher(t);
@@ -1129,43 +986,43 @@ public class AiService {
             mergeRegistration(dichos, destino);
             return;
         }
-        if (!enBlanco(dichos.getNombre())) destino.setNombre(dichos.getNombre());
-        if (!enBlanco(dichos.getEmail())) destino.setEmail(dichos.getEmail());
-        if (!enBlanco(dichos.getEspecialidad())) destino.setEspecialidad(dichos.getEspecialidad());
-        if (!enBlanco(dichos.getNumeroLicencia())) destino.setNumeroLicencia(dichos.getNumeroLicencia());
-        if (!enBlanco(dichos.getTelefono())) destino.setTelefono(dichos.getTelefono());
-        if (!enBlanco(dichos.getDocumento())) destino.setDocumento(dichos.getDocumento());
-        if (!enBlanco(dichos.getPasswordSugerida())) destino.setPasswordSugerida(dichos.getPasswordSugerida());
-        if (!enBlanco(dichos.getDiasAtencion())) destino.setDiasAtencion(dichos.getDiasAtencion());
-        if (!enBlanco(dichos.getHoraInicio())) destino.setHoraInicio(dichos.getHoraInicio());
-        if (!enBlanco(dichos.getHoraFin())) destino.setHoraFin(dichos.getHoraFin());
-        if (!enBlanco(dichos.getHoraInicio2())) destino.setHoraInicio2(dichos.getHoraInicio2());
-        if (!enBlanco(dichos.getHoraFin2())) destino.setHoraFin2(dichos.getHoraFin2());
-        if (!enBlanco(dichos.getHorario())) destino.setHorario(dichos.getHorario());
-        if (!enBlanco(dichos.getFechaNacimiento())) destino.setFechaNacimiento(dichos.getFechaNacimiento());
-        if (!enBlanco(dichos.getTipoSangre())) destino.setTipoSangre(dichos.getTipoSangre());
-        if (!enBlanco(dichos.getGenero())) destino.setGenero(dichos.getGenero());
-        if (!enBlanco(dichos.getCiudad())) destino.setCiudad(dichos.getCiudad());
-        if (!enBlanco(dichos.getDireccion())) destino.setDireccion(dichos.getDireccion());
-        if (!enBlanco(dichos.getAlergias())) destino.setAlergias(dichos.getAlergias());
-        if (!enBlanco(dichos.getContactoEmergencia())) destino.setContactoEmergencia(dichos.getContactoEmergencia());
-        if (!enBlanco(dichos.getTelefonoEmergencia())) destino.setTelefonoEmergencia(dichos.getTelefonoEmergencia());
+        if (!isMissing(dichos.getNombre())) destino.setNombre(dichos.getNombre());
+        if (!isMissing(dichos.getEmail())) destino.setEmail(dichos.getEmail());
+        if (!isMissing(dichos.getEspecialidad())) destino.setEspecialidad(dichos.getEspecialidad());
+        if (!isMissing(dichos.getNumeroLicencia())) destino.setNumeroLicencia(dichos.getNumeroLicencia());
+        if (!isMissing(dichos.getTelefono())) destino.setTelefono(dichos.getTelefono());
+        if (!isMissing(dichos.getDocumento())) destino.setDocumento(dichos.getDocumento());
+        if (!isMissing(dichos.getPasswordSugerida())) destino.setPasswordSugerida(dichos.getPasswordSugerida());
+        if (!isMissing(dichos.getDiasAtencion())) destino.setDiasAtencion(dichos.getDiasAtencion());
+        if (!isMissing(dichos.getHoraInicio())) destino.setHoraInicio(dichos.getHoraInicio());
+        if (!isMissing(dichos.getHoraFin())) destino.setHoraFin(dichos.getHoraFin());
+        if (!isMissing(dichos.getHoraInicio2())) destino.setHoraInicio2(dichos.getHoraInicio2());
+        if (!isMissing(dichos.getHoraFin2())) destino.setHoraFin2(dichos.getHoraFin2());
+        if (!isMissing(dichos.getHorario())) destino.setHorario(dichos.getHorario());
+        if (!isMissing(dichos.getFechaNacimiento())) destino.setFechaNacimiento(dichos.getFechaNacimiento());
+        if (!isMissing(dichos.getTipoSangre())) destino.setTipoSangre(dichos.getTipoSangre());
+        if (!isMissing(dichos.getGenero())) destino.setGenero(dichos.getGenero());
+        if (!isMissing(dichos.getCiudad())) destino.setCiudad(dichos.getCiudad());
+        if (!isMissing(dichos.getDireccion())) destino.setDireccion(dichos.getDireccion());
+        if (!isMissing(dichos.getAlergias())) destino.setAlergias(dichos.getAlergias());
+        if (!isMissing(dichos.getContactoEmergencia())) destino.setContactoEmergencia(dichos.getContactoEmergencia());
+        if (!isMissing(dichos.getTelefonoEmergencia())) destino.setTelefonoEmergencia(dichos.getTelefonoEmergencia());
         if (dichos.getAnosExperiencia() != null) destino.setAnosExperiencia(dichos.getAnosExperiencia());
-        if (!enBlanco(dichos.getAccion())) destino.setAccion(dichos.getAccion());
+        if (!isMissing(dichos.getAccion())) destino.setAccion(dichos.getAccion());
     }
 
     private Optional<AiAdminOperationResponse> readAdminResponse(String json) {
         try {
-            return Optional.of(mapper.readValue(extraerJson(json), AiAdminOperationResponse.class));
+            return Optional.of(mapper.readValue(extractJson(json), AiAdminOperationResponse.class));
         } catch (Exception ex) {
             log.warn("No se pudo leer el alta de Gemini: {}", ex.getMessage());
             return Optional.empty();
         }
     }
 
-    private String extractAlergias(String original) {
+    private String extractAllergies(String original) {
         if (original == null || original.isBlank()) return null;
-        String t = sinAcentoAdmin(original).toLowerCase();
+        String t = foldAccents(original).toLowerCase();
         if (t.matches("(?s).*\\b(no tengo (ninguna|alergias)|ninguna alergia|sin alergias|no tiene alergias|alergias?\\s*[,:]?\\s*(no|ninguna|nada))\\b.*")) {
             return "Ninguna";
         }
@@ -1200,7 +1057,7 @@ public class AiService {
     }
 
     private boolean isNewRegistration(String texto) {
-        String t = texto == null ? "" : sinAcentoAdmin(texto).toLowerCase();
+        String t = texto == null ? "" : foldAccents(texto).toLowerCase();
         boolean pideAlta = t.contains("crea") || t.contains("registrar") || t.contains("nuevo medico")
                 || t.contains("nueva medica") || t.contains("nuevo paciente") || t.contains("nueva paciente");
         boolean diceQuien = t.contains("medic") || t.contains("doctor") || t.contains("especialista") || t.contains("paciente");
@@ -1208,47 +1065,47 @@ public class AiService {
     }
 
     private boolean shouldRestartRegistration(String texto, AiAdminOperationResponse previo) {
-        String t = texto == null ? "" : sinAcentoAdmin(texto).toLowerCase();
+        String t = texto == null ? "" : foldAccents(texto).toLowerCase();
         if (t.contains("cancela") || t.contains("olvidalo") || t.contains("empezar de nuevo") || t.contains("otra persona")) {
             return true;
         }
         if (previo == null || !isNewRegistration(texto)) return false;
         String nombre = extractRegistrationName(texto);
-        return nombre != null && !enBlanco(previo.getNombre())
-                && !sinAcentoAdmin(nombre).equalsIgnoreCase(sinAcentoAdmin(previo.getNombre()));
+        return nombre != null && !isMissing(previo.getNombre())
+                && !foldAccents(nombre).equalsIgnoreCase(foldAccents(previo.getNombre()));
     }
 
     private AiAdminOperationResponse mergeRegistration(AiAdminOperationResponse previo, AiAdminOperationResponse nuevo) {
         if (nuevo == null) nuevo = new AiAdminOperationResponse();
         if (previo == null) return nuevo;
-        if (enBlanco(nuevo.getNombre())) nuevo.setNombre(previo.getNombre());
-        if (enBlanco(nuevo.getEmail())) nuevo.setEmail(previo.getEmail());
-        if (enBlanco(nuevo.getEspecialidad())) nuevo.setEspecialidad(previo.getEspecialidad());
-        if (enBlanco(nuevo.getNumeroLicencia())) nuevo.setNumeroLicencia(previo.getNumeroLicencia());
-        if (enBlanco(nuevo.getTelefono())) nuevo.setTelefono(previo.getTelefono());
-        if (enBlanco(nuevo.getConsultorio())) nuevo.setConsultorio(previo.getConsultorio());
-        if (enBlanco(nuevo.getBiografia())) nuevo.setBiografia(previo.getBiografia());
-        if (enBlanco(nuevo.getDocumento())) nuevo.setDocumento(previo.getDocumento());
-        if (enBlanco(nuevo.getCiudad())) nuevo.setCiudad(previo.getCiudad());
-        if (enBlanco(nuevo.getGenero())) nuevo.setGenero(previo.getGenero());
-        if (enBlanco(nuevo.getAlergias())) nuevo.setAlergias(previo.getAlergias());
-        if (enBlanco(nuevo.getFechaNacimiento())) nuevo.setFechaNacimiento(previo.getFechaNacimiento());
-        if (enBlanco(nuevo.getDireccion())) nuevo.setDireccion(previo.getDireccion());
-        if (enBlanco(nuevo.getTipoSangre())) nuevo.setTipoSangre(previo.getTipoSangre());
-        if (enBlanco(nuevo.getContactoEmergencia())) nuevo.setContactoEmergencia(previo.getContactoEmergencia());
-        if (enBlanco(nuevo.getTelefonoEmergencia())) nuevo.setTelefonoEmergencia(previo.getTelefonoEmergencia());
-        if (enBlanco(nuevo.getObservaciones())) nuevo.setObservaciones(previo.getObservaciones());
-        if (enBlanco(nuevo.getPasswordSugerida())) nuevo.setPasswordSugerida(previo.getPasswordSugerida());
-        if (enBlanco(nuevo.getDiasAtencion())) nuevo.setDiasAtencion(previo.getDiasAtencion());
-        if (enBlanco(nuevo.getHoraInicio())) nuevo.setHoraInicio(previo.getHoraInicio());
-        if (enBlanco(nuevo.getHoraFin())) nuevo.setHoraFin(previo.getHoraFin());
-        if (enBlanco(nuevo.getHoraInicio2())) nuevo.setHoraInicio2(previo.getHoraInicio2());
-        if (enBlanco(nuevo.getHoraFin2())) nuevo.setHoraFin2(previo.getHoraFin2());
-        if (enBlanco(nuevo.getHorario())) nuevo.setHorario(previo.getHorario());
+        if (isMissing(nuevo.getNombre())) nuevo.setNombre(previo.getNombre());
+        if (isMissing(nuevo.getEmail())) nuevo.setEmail(previo.getEmail());
+        if (isMissing(nuevo.getEspecialidad())) nuevo.setEspecialidad(previo.getEspecialidad());
+        if (isMissing(nuevo.getNumeroLicencia())) nuevo.setNumeroLicencia(previo.getNumeroLicencia());
+        if (isMissing(nuevo.getTelefono())) nuevo.setTelefono(previo.getTelefono());
+        if (isMissing(nuevo.getConsultorio())) nuevo.setConsultorio(previo.getConsultorio());
+        if (isMissing(nuevo.getBiografia())) nuevo.setBiografia(previo.getBiografia());
+        if (isMissing(nuevo.getDocumento())) nuevo.setDocumento(previo.getDocumento());
+        if (isMissing(nuevo.getCiudad())) nuevo.setCiudad(previo.getCiudad());
+        if (isMissing(nuevo.getGenero())) nuevo.setGenero(previo.getGenero());
+        if (isMissing(nuevo.getAlergias())) nuevo.setAlergias(previo.getAlergias());
+        if (isMissing(nuevo.getFechaNacimiento())) nuevo.setFechaNacimiento(previo.getFechaNacimiento());
+        if (isMissing(nuevo.getDireccion())) nuevo.setDireccion(previo.getDireccion());
+        if (isMissing(nuevo.getTipoSangre())) nuevo.setTipoSangre(previo.getTipoSangre());
+        if (isMissing(nuevo.getContactoEmergencia())) nuevo.setContactoEmergencia(previo.getContactoEmergencia());
+        if (isMissing(nuevo.getTelefonoEmergencia())) nuevo.setTelefonoEmergencia(previo.getTelefonoEmergencia());
+        if (isMissing(nuevo.getObservaciones())) nuevo.setObservaciones(previo.getObservaciones());
+        if (isMissing(nuevo.getPasswordSugerida())) nuevo.setPasswordSugerida(previo.getPasswordSugerida());
+        if (isMissing(nuevo.getDiasAtencion())) nuevo.setDiasAtencion(previo.getDiasAtencion());
+        if (isMissing(nuevo.getHoraInicio())) nuevo.setHoraInicio(previo.getHoraInicio());
+        if (isMissing(nuevo.getHoraFin())) nuevo.setHoraFin(previo.getHoraFin());
+        if (isMissing(nuevo.getHoraInicio2())) nuevo.setHoraInicio2(previo.getHoraInicio2());
+        if (isMissing(nuevo.getHoraFin2())) nuevo.setHoraFin2(previo.getHoraFin2());
+        if (isMissing(nuevo.getHorario())) nuevo.setHorario(previo.getHorario());
         if (nuevo.getAnosExperiencia() == null) nuevo.setAnosExperiencia(previo.getAnosExperiencia());
-        if (enBlanco(nuevo.getAccion()) || "PREGUNTAR".equalsIgnoreCase(nuevo.getAccion())
+        if (isMissing(nuevo.getAccion()) || "PREGUNTAR".equalsIgnoreCase(nuevo.getAccion())
                 || "INFO".equalsIgnoreCase(nuevo.getAccion())) {
-            if (!enBlanco(previo.getAccion()) && !"INFO".equalsIgnoreCase(previo.getAccion())) {
+            if (!isMissing(previo.getAccion()) && !"INFO".equalsIgnoreCase(previo.getAccion())) {
                 nuevo.setAccion(previo.getAccion());
             }
         }
@@ -1258,7 +1115,7 @@ public class AiService {
     private AiAdminOperationResponse localAdminOperation(String instruccion, AiAdminOperationResponse previo) {
         AiAdminOperationResponse r = previo == null ? new AiAdminOperationResponse() : previo;
         String original = instruccion == null ? "" : instruccion.trim();
-        String t = sinAcentoAdmin(original).toLowerCase();
+        String t = foldAccents(original).toLowerCase();
         if (t.contains("cancela") || t.contains("olvidalo") || t.contains("empezar de nuevo")) {
             return AiAdminOperationResponse.builder().accion("INFO").modoDemo(true)
                     .mensaje("Listo. Dime si el alta es de un médico o de un paciente.").build();
@@ -1271,13 +1128,13 @@ public class AiService {
         if (email != null) r.setEmail(email);
         Integer anos = yearsInText(t);
         if (anos != null) r.setAnosExperiencia(anos);
-        String licencia = extraerGrupo(original, "(?i)licencia\\s*(?:es|numero|n[uú]mero|:)?\\s*[:#]?\\s*([A-Za-z]{0,8}[\\s-]?\\d[\\d-]{1,20}|[A-Za-z0-9-]{3,30}\\d)");
+        String licencia = captureGroup(original, "(?i)licencia\\s*(?:es|numero|n[uú]mero|:)?\\s*[:#]?\\s*([A-Za-z]{0,8}[\\s-]?\\d[\\d-]{1,20}|[A-Za-z0-9-]{3,30}\\d)");
         if (licencia != null) r.setNumeroLicencia(licencia.trim().replaceAll("\\s+", "-").toUpperCase());
-        String documento = extraerGrupo(original, "(?i)(?:documento|c[eé]dula|cedula|dni)(?:\\s+de\\s+identidad)?\\s*[,:]?\\s*(?:es|n[uú]mero)?\\s*[:#]?\\s*((?:\\d[\\s.-]?){4,15}\\d|[A-Za-z0-9-]{5,20})");
+        String documento = captureGroup(original, "(?i)(?:documento|c[eé]dula|cedula|dni)(?:\\s+de\\s+identidad)?\\s*[,:]?\\s*(?:es|n[uú]mero)?\\s*[:#]?\\s*((?:\\d[\\s.-]?){4,15}\\d|[A-Za-z0-9-]{5,20})");
         if (documento != null) {
             r.setDocumento(documento.matches("[\\d\\s.-]+") ? documento.replaceAll("[^0-9]", "") : documento);
         }
-        String telefono = extraerGrupo(original, "(?i)(?:tel[eé]fono|celular|cel|whatsapp)\\s*(?:es|:)?\\s*([0-9][0-9 \\-]{6,18})");
+        String telefono = captureGroup(original, "(?i)(?:tel[eé]fono|celular|cel|whatsapp)\\s*(?:es|:)?\\s*([0-9][0-9 \\-]{6,18})");
         if (telefono != null) r.setTelefono(telefono.replaceAll("[^0-9]", ""));
         String clave = passwordInText(original);
         if (clave != null) r.setPasswordSugerida(clave);
@@ -1295,21 +1152,21 @@ public class AiService {
         String fechaHablada = dateFromText(original);
         if (fechaHablada != null) r.setFechaNacimiento(fechaHablada);
         String fin = "(?=[.,;\\n]|\\s+y\\s+(?:el|la|mi|las|los)\\b|$)";
-        String ciudad = extraerGrupo(original, "(?i)ciudad\\s*[,:]?\\s*(?:es\\s+)?(?:(?:la\\s+)?ciudad\\s+de\\s+|de\\s+)?([\\p{L}][\\p{L} '-]{1,40}?)" + fin);
-        if (ciudad == null) ciudad = extraerGrupo(original, "(?i:vive\\s+en|reside\\s+en)\\s+(?:la\\s+ciudad\\s+de\\s+)?(\\p{Lu}\\p{L}+(?:\\s+\\p{Lu}\\p{L}+)?)(?=[.,;\\n]|\\s|$)");
+        String ciudad = captureGroup(original, "(?i)ciudad\\s*[,:]?\\s*(?:es\\s+)?(?:(?:la\\s+)?ciudad\\s+de\\s+|de\\s+)?([\\p{L}][\\p{L} '-]{1,40}?)" + fin);
+        if (ciudad == null) ciudad = captureGroup(original, "(?i:vive\\s+en|reside\\s+en)\\s+(?:la\\s+ciudad\\s+de\\s+)?(\\p{Lu}\\p{L}+(?:\\s+\\p{Lu}\\p{L}+)?)(?=[.,;\\n]|\\s|$)");
         if (ciudad == null) ciudad = knownCity(original);
         if (ciudad != null) r.setCiudad(ciudad);
-        String direccion = extraerGrupo(original, "(?i)direcci[oó]n\\s*(?:es|:)?\\s*(?:ah\\s+|eh\\s+)?([\\p{L}0-9#][^.;\\n]{2,80}?)"
+        String direccion = captureGroup(original, "(?i)direcci[oó]n\\s*(?:es|:)?\\s*(?:ah\\s+|eh\\s+)?([\\p{L}0-9#][^.;\\n]{2,80}?)"
                 + "(?=,\\s*(?:mi|su|la|el|y|ciudad|tel[eé]fono|g[eé]nero|alergias?)\\b|\\s+y\\s+(?:mi|su|la|el)\\b|[.;\\n]|$)");
         if (direccion == null) {
-            direccion = extraerGrupo(original, "(?i:vive\\s+en|reside\\s+en|queda\\s+en)\\s+(?:la\\s+|el\\s+)?((?i:calle|carrera|cra\\.?|kr|avenida|av\\.?|transversal|diagonal|manzana|mz|barrio)\\s*[^.;\\n]{2,70}?)(?=\\s+en\\s+\\p{Lu}|,\\s*(?i:su|mi|la|el|y)\\b|[.;\\n]|$)");
+            direccion = captureGroup(original, "(?i:vive\\s+en|reside\\s+en|queda\\s+en)\\s+(?:la\\s+|el\\s+)?((?i:calle|carrera|cra\\.?|kr|avenida|av\\.?|transversal|diagonal|manzana|mz|barrio)\\s*[^.;\\n]{2,70}?)(?=\\s+en\\s+\\p{Lu}|,\\s*(?i:su|mi|la|el|y)\\b|[.;\\n]|$)");
         }
         if (direccion != null) r.setDireccion(direccion);
-        String alergia = extractAlergias(original);
+        String alergia = extractAllergies(original);
         if (alergia != null) r.setAlergias(alergia);
-        String contacto = extraerGrupo(original, "(?i)contacto de emergencia\\s*[,:]?\\s*(?:es\\s+)?(?:ah\\s+|eh\\s+)?([\\p{L}][\\p{L} '-]{1,50}?)" + fin);
+        String contacto = captureGroup(original, "(?i)contacto de emergencia\\s*[,:]?\\s*(?:es\\s+)?(?:ah\\s+|eh\\s+)?([\\p{L}][\\p{L} '-]{1,50}?)" + fin);
         if (contacto != null) r.setContactoEmergencia(contacto);
-        String telEmergencia = extraerGrupo(original, "(?i)(?:tel[eé]fono de emergencia|contacto de emergencia)[^.\\n\\d]{0,40}?([0-9][0-9 \\-]{6,18}[0-9])");
+        String telEmergencia = captureGroup(original, "(?i)(?:tel[eé]fono de emergencia|contacto de emergencia)[^.\\n\\d]{0,40}?([0-9][0-9 \\-]{6,18}[0-9])");
         if (telEmergencia != null) r.setTelefonoEmergencia(telEmergencia.replaceAll("[^0-9]", ""));
         Matcher llamar = Pattern.compile("(?i)(?:emergencia|urgencia)s?[^.\\n]{0,25}?(?:llamar|avisar|contactar|comunicarse\\s+con)\\s+a\\s+([\\p{L}][\\p{L} '-]{1,40}?)\\s*(?:,|al|al\\s+n[uú]mero|en\\s+el)\\s*([0-9][0-9 \\-]{6,18}[0-9])").matcher(original);
         while (llamar.find()) {
@@ -1352,11 +1209,11 @@ public class AiService {
             "Buenaventura", "Tuluá", "Soacha", "Bello", "Envigado", "Itagüí", "Ipiales", "Tumaco", "Jamundí", "Yumbo");
 
     private String knownCity(String texto) {
-        String n = sinAcentoAdmin(texto).toLowerCase();
+        String n = foldAccents(texto).toLowerCase();
         String encontrada = null;
         int ultima = -1;
         for (String ciudad : CIUDADES) {
-            Matcher m = Pattern.compile("\\b" + Pattern.quote(sinAcentoAdmin(ciudad).toLowerCase()) + "\\b").matcher(n);
+            Matcher m = Pattern.compile("\\b" + Pattern.quote(foldAccents(ciudad).toLowerCase()) + "\\b").matcher(n);
             while (m.find()) {
                 if (m.start() > ultima) {
                     ultima = m.start();
@@ -1370,7 +1227,7 @@ public class AiService {
     private String extractRegistrationName(String original) {
         String letras = "([\\p{L}][\\p{L} '-]{2,80})";
         String prefijo = "(?:(?:dr|dra|doctor|doctora)\\.?\\s+)?";
-        String nombre = extraerGrupo(original, "(?i)(?:"
+        String nombre = captureGroup(original, "(?i)(?:"
                 + "(?:paciente|m[eé]dic[oa]|doctor[a]?|especialista)\\s*[:\\-]\\s*"
                 + "|(?:crea(?:r)?|registra(?:r)?|inscribe|inscribir|dar\\s+de\\s+alta|da\\s+de\\s+alta)\\s+(?:(?:a\\s+la|al|a|la|el)\\s+)?(?:nuev[oa]\\s+)?(?:paciente|m[eé]dic[oa]|doctor[a]?|especialista)\\s+(?!nuev|por\\b|que\\b)"
                 + "|(?:es\\s+)?(?:el|la)\\s+(?:doctor[a]?|dr[a]?\\.?)\\s+"
@@ -1394,19 +1251,19 @@ public class AiService {
             Map.entry("cuarenta", 40));
 
     private Integer yearsInText(String t) {
-        String digitos = extraerGrupo(t, "(\\d{1,2})\\s*anos(?:\\s+de\\s+experiencia)?");
-        if (digitos == null) digitos = extraerGrupo(t, "experiencia\\s*(?:de|:|es)?\\s*(\\d{1,2})");
+        String digitos = captureGroup(t, "(\\d{1,2})\\s*anos(?:\\s+de\\s+experiencia)?");
+        if (digitos == null) digitos = captureGroup(t, "experiencia\\s*(?:de|:|es)?\\s*(\\d{1,2})");
         if (digitos != null) return Integer.parseInt(digitos);
-        String palabra = extraerGrupo(t, "\\b([a-z]+)\\s+anos(?:\\s+de\\s+experiencia)?");
+        String palabra = captureGroup(t, "\\b([a-z]+)\\s+anos(?:\\s+de\\s+experiencia)?");
         if (palabra != null && NUMEROS_HABLADOS.containsKey(palabra)) return NUMEROS_HABLADOS.get(palabra);
         return null;
     }
 
     private String emailInText(String original) {
-        String t = sinAcentoAdmin(original).toLowerCase()
+        String t = foldAccents(original).toLowerCase()
                 .replaceAll("\\s+punto\\s+", ".")
                 .replaceAll("\\s*arroba\\s*", "@");
-        String correo = extraerGrupo(t, "([\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+)");
+        String correo = captureGroup(t, "([\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+)");
         if (correo != null) return correo.replaceAll("\\.+$", "");
         Matcher sinArroba = Pattern.compile("([\\w.+-]+?)\\.?(gmail|hotmail|outlook|yahoo|icloud|live)\\.(com|es|co)\\b").matcher(t);
         String encontrado = null;
@@ -1435,11 +1292,11 @@ public class AiService {
 
     private String specialtyInText(String texto) {
         if (texto == null) return null;
-        String n = sinAcentoAdmin(texto).toLowerCase();
+        String n = foldAccents(texto).toLowerCase();
         String mejor = null;
         int mejorLargo = 0;
         for (String especialidad : catalogNames()) {
-            String e = sinAcentoAdmin(especialidad).toLowerCase();
+            String e = foldAccents(especialidad).toLowerCase();
             if (n.contains(e) && e.length() > mejorLargo) {
                 mejor = especialidad;
                 mejorLargo = e.length();
@@ -1456,7 +1313,7 @@ public class AiService {
     private static final List<String> NOMBRES_DIAS = List.of("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo");
 
     private void fillSchedule(AiAdminOperationResponse r, String original) {
-        String t = sinAcentoAdmin(original).toLowerCase();
+        String t = foldAccents(original).toLowerCase();
         if (!t.matches("(?s).*\\b(horario|horarios|atiende|atendera|trabaja|consulta|turno|jornada|lunes|martes|miercoles|jueves|viernes|sabado|domingo|entre semana|todos los dias)\\b.*")) {
             return;
         }
@@ -1512,7 +1369,7 @@ public class AiService {
                 r.setHoraFin2(null);
             }
         }
-        if (!enBlanco(r.getDiasAtencion()) && !enBlanco(r.getHoraInicio())) {
+        if (!isMissing(r.getDiasAtencion()) && !isMissing(r.getHoraInicio())) {
             r.setHorario(scheduleText(r));
         }
     }
@@ -1540,14 +1397,14 @@ public class AiService {
             }
         };
         String horas = nvl(r.getHoraInicio()) + " a " + nvl(r.getHoraFin());
-        if (!enBlanco(r.getHoraInicio2())) horas += " y " + r.getHoraInicio2() + " a " + r.getHoraFin2();
+        if (!isMissing(r.getHoraInicio2())) horas += " y " + r.getHoraInicio2() + " a " + r.getHoraFin2();
         return dias + ", " + horas;
     }
 
     private AiAdminOperationResponse requireRegistrationData(AiAdminOperationResponse r) {
         if (r == null) r = new AiAdminOperationResponse();
         String accion = r.getAccion() == null ? "" : r.getAccion().trim().toUpperCase();
-        if ("INFO".equals(accion) && enBlanco(r.getNombre()) && enBlanco(r.getEmail()) && enBlanco(r.getDocumento())) {
+        if ("INFO".equals(accion) && isMissing(r.getNombre()) && isMissing(r.getEmail()) && isMissing(r.getDocumento())) {
             r.setAccion("INFO");
             r.setMensaje("Dime si el registro es de un médico o de un paciente, y el nombre.");
             return r;
@@ -1564,14 +1421,14 @@ public class AiService {
         if (esp == null) esp = normalizeSpecialty(r.getEspecialidad());
         if (esp != null) r.setEspecialidad(esp);
         boolean medico = "CREAR_MEDICO".equals(accion);
-        if ("PREGUNTAR".equals(accion)) medico = !enBlanco(r.getEspecialidad()) || !enBlanco(r.getNumeroLicencia());
+        if ("PREGUNTAR".equals(accion)) medico = !isMissing(r.getEspecialidad()) || !isMissing(r.getNumeroLicencia());
         if ("CREAR_PACIENTE".equals(accion)) medico = false;
         List<String> faltan = new ArrayList<>();
-        if (enBlanco(r.getNombre())) faltan.add("el nombre completo");
-        if (enBlanco(r.getEmail()) || !r.getEmail().contains("@")) faltan.add("el correo");
+        if (isMissing(r.getNombre())) faltan.add("el nombre completo");
+        if (isMissing(r.getEmail()) || !r.getEmail().contains("@")) faltan.add("el correo");
         String claveCorta = null;
         String claveLarga = null;
-        if (enBlanco(r.getPasswordSugerida())) {
+        if (isMissing(r.getPasswordSugerida())) {
             faltan.add("la contraseña (entre 6 y 12 caracteres)");
         } else if (r.getPasswordSugerida().length() < 6) {
             claveCorta = r.getPasswordSugerida();
@@ -1594,26 +1451,26 @@ public class AiService {
             if (r.getAnosExperiencia() == null || r.getAnosExperiencia() < 0 || r.getAnosExperiencia() > 70) {
                 faltan.add("los años de experiencia");
             }
-            if (enBlanco(r.getNumeroLicencia())) faltan.add("el número de licencia");
-            if (enBlanco(r.getTelefono()) || r.getTelefono().length() < 7) faltan.add("el teléfono");
-            if (enBlanco(r.getDiasAtencion()) || enBlanco(r.getHoraInicio()) || enBlanco(r.getHoraFin())) {
+            if (isMissing(r.getNumeroLicencia())) faltan.add("el número de licencia");
+            if (isMissing(r.getTelefono()) || r.getTelefono().length() < 7) faltan.add("el teléfono");
+            if (isMissing(r.getDiasAtencion()) || isMissing(r.getHoraInicio()) || isMissing(r.getHoraFin())) {
                 faltan.add("el horario de atención, con los días y las horas");
             }
         } else {
             r.setAccion("CREAR_PACIENTE");
-            if (enBlanco(r.getDocumento())) faltan.add("el documento de identidad");
-            if (enBlanco(r.getTelefono()) || r.getTelefono().length() < 7) faltan.add("el teléfono");
-            if (enBlanco(r.getFechaNacimiento()) || !r.getFechaNacimiento().matches("\\d{4}-\\d{2}-\\d{2}")) {
+            if (isMissing(r.getDocumento())) faltan.add("el documento de identidad");
+            if (isMissing(r.getTelefono()) || r.getTelefono().length() < 7) faltan.add("el teléfono");
+            if (isMissing(r.getFechaNacimiento()) || !r.getFechaNacimiento().matches("\\d{4}-\\d{2}-\\d{2}")) {
                 r.setFechaNacimiento(null);
                 faltan.add("la fecha de nacimiento");
             }
-            if (enBlanco(r.getGenero())) faltan.add("el género");
-            if (enBlanco(r.getTipoSangre())) faltan.add("el tipo de sangre");
-            if (enBlanco(r.getDireccion())) faltan.add("la dirección");
-            if (enBlanco(r.getCiudad())) faltan.add("la ciudad");
-            if (enBlanco(r.getAlergias())) faltan.add("las alergias (o «ninguna»)");
-            if (enBlanco(r.getContactoEmergencia())) faltan.add("el contacto de emergencia");
-            if (enBlanco(r.getTelefonoEmergencia())) faltan.add("el teléfono de emergencia");
+            if (isMissing(r.getGenero())) faltan.add("el género");
+            if (isMissing(r.getTipoSangre())) faltan.add("el tipo de sangre");
+            if (isMissing(r.getDireccion())) faltan.add("la dirección");
+            if (isMissing(r.getCiudad())) faltan.add("la ciudad");
+            if (isMissing(r.getAlergias())) faltan.add("las alergias (o «ninguna»)");
+            if (isMissing(r.getContactoEmergencia())) faltan.add("el contacto de emergencia");
+            if (isMissing(r.getTelefonoEmergencia())) faltan.add("el teléfono de emergencia");
         }
         if (claveCorta != null) {
             r.setAccion("PREGUNTAR");
@@ -1633,7 +1490,7 @@ public class AiService {
         if (!faltan.isEmpty()) {
             r.setAccion("PREGUNTAR");
             String tipo = medico ? "médico" : "paciente";
-            if (enBlanco(r.getNombre())) {
+            if (isMissing(r.getNombre())) {
                 r.setMensaje("Para registrar al " + tipo + " me falta " + joinMissing(faltan) + ". Puedes escribirlos como quieras.");
             } else {
                 r.setMensaje(r.getNombre() + " ya quedó anotado como " + tipo + ". Para registrarlo me falta "
@@ -1663,10 +1520,10 @@ public class AiService {
 
     private String normalizeSpecialty(String valor) {
         if (valor == null || valor.isBlank()) return null;
-        String n = sinAcentoAdmin(valor).toLowerCase();
+        String n = foldAccents(valor).toLowerCase();
         String mejor = null;
         for (String especialidad : catalogNames()) {
-            String e = sinAcentoAdmin(especialidad).toLowerCase();
+            String e = foldAccents(especialidad).toLowerCase();
             if (n.equals(e)) return especialidad;
             if (n.contains(e)) return especialidad;
             if (e.contains(n) && n.length() >= 5) mejor = especialidad;
@@ -1681,11 +1538,11 @@ public class AiService {
         } catch (Exception ex) {
             log.warn("No se pudo leer el catálogo de especializaciones: {}", ex.getMessage());
         }
-        return ESPECIALIDADES_ADMIN;
+        return SpecialtyService.DEFAULTS;
     }
 
     private boolean looksLikePersonForm(String texto) {
-        String t = sinAcentoAdmin(texto == null ? "" : texto).toLowerCase();
+        String t = foldAccents(texto == null ? "" : texto).toLowerCase();
         int n = 0;
         if (t.contains("@") || t.contains("correo") || t.contains("gmail")) n++;
         if (t.contains("contrasena") || t.contains("clave") || t.contains("password")) n++;
@@ -1698,7 +1555,7 @@ public class AiService {
     }
 
     private AiAdminOperationResponse specialtyRegistration(String instruccion, AiAdminOperationResponse previo) {
-        String plano = sinAcentoAdmin(instruccion).toLowerCase();
+        String plano = foldAccents(instruccion).toLowerCase();
         boolean pide = plano.contains("especializ") || plano.contains("especialidad");
         if (looksLikePersonForm(instruccion) || isNewRegistration(instruccion)) return null;
         boolean sigue = previo != null && "PREGUNTAR_ESPECIALIDAD".equals(previo.getAccion());
@@ -1721,7 +1578,7 @@ public class AiService {
             String finalNombre = creada.getNombre();
             AiAdminOperationResponse r = copyDraft(previo);
             r.setEspecialidad(finalNombre);
-            boolean siguePersona = previo != null && !enBlanco(previo.getNombre());
+            boolean siguePersona = previo != null && !isMissing(previo.getNombre());
             if (siguePersona) {
                 r.setAccion("PREGUNTAR");
                 r.setMensaje((creada.isYaExistia()
@@ -1759,7 +1616,7 @@ public class AiService {
         return hallado.replaceAll("(?i)\\s+(para|del|de)\\s+(los\\s+|las\\s+)?m[eé]dicos.*$", "").trim();
     }
 
-    private String extraerGrupo(String texto, String regex) {
+    private String captureGroup(String texto, String regex) {
         if (texto == null) return null;
         Matcher m = Pattern.compile(regex).matcher(texto);
         String valor = null;
@@ -1770,16 +1627,16 @@ public class AiService {
         return valor;
     }
 
-    private boolean enBlanco(String valor) {
+    private boolean isMissing(String valor) {
         return valor == null || valor.isBlank();
     }
 
-    private String sinAcentoAdmin(String valor) {
+    private String foldAccents(String valor) {
         return java.text.Normalizer.normalize(valor, java.text.Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "");
     }
 
-    /* ============ 3. Escriba SOAP médico ============== */
+    /* 3. SOAP draft for the doctor. */
     public AiSoapResponse soap(AiSoapRequest req) {
         final String system = """
                 Apoyas al médico en el consultorio, como un colega que sí leyó el caso. El relato ya está en pantalla: no lo copies ni pegues el motivo tal cual ("Puede tratarse de tengo...").
@@ -1846,7 +1703,7 @@ public class AiService {
             try {
                 AiConsultaSimResponse r = leerConsulta(t);
                 if (r.getDicePaciente() != null && !r.getDicePaciente().isBlank()) {
-                    r.setDicePaciente(completarSiCorto(r.getDicePaciente()));
+                    r.setDicePaciente(finishIfCutOff(r.getDicePaciente()));
                     return r;
                 }
             } catch (Exception ignored) {
@@ -1856,7 +1713,7 @@ public class AiService {
         t = t.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "").trim();
         if (t.startsWith("\"") && t.endsWith("\"") && t.length() > 2) t = t.substring(1, t.length() - 1);
         if (t.isBlank()) return consultaMock(req);
-        t = completarSiCorto(t);
+        t = finishIfCutOff(t);
         return AiConsultaSimResponse.builder()
                 .dicePaciente(t)
                 .pistaParaElMedico("")
@@ -1872,7 +1729,7 @@ public class AiService {
         return u == '.' || u == '!' || u == '?' || u == '…' || u == '"' || u == '»';
     }
 
-    private String completarSiCorto(String t) {
+    private String finishIfCutOff(String t) {
         if (fraseCerrada(t)) return t;
         Optional<String> extra = callAnthropic(
                 "Eres el mismo paciente. El texto se cortó. Devuelve TODO el texto otra vez, con la última frase terminada en punto. No agregues un tema nuevo.",
@@ -1905,7 +1762,7 @@ public class AiService {
                 .modoDemo(true).build();
     }
 
-    /* ============ 4. Interacciones Fármaco-Alimento (GNN) ============== */
+    /* 4. Drug and food interactions. */
     public AiInteractionResponse interactions(AiInteractionRequest req) {
         final String system = """
                 Eres un asistente de lenguaje para señalar posibles interacciones a verificar por un farmacéutico.
@@ -1993,7 +1850,7 @@ public class AiService {
                 .modoDemo(true).build();
     }
 
-    /* ============ 5. Triangulación precios medicamentos (Isolation Forest + Prophet) ============== */
+    /* 5. Pharmacy price check. */
     public AiPricesResponse prices(AiPricesRequest req) {
         final String system = """
                 Estimas precios aproximados de medicamentos en Colombia, en pesos colombianos. No consultas inventario real.
@@ -2041,7 +1898,7 @@ public class AiService {
         double max = base * 1.35;
         double pmed = base * 1.02;
 
-        String presentacion = presentacionDe(req);
+        String presentacion = estimatedPack(req);
         List<String[]> puntos = puntosDeVenta(req.getCiudad());
         double[] factores = {0.86, 0.97, 1.08, 1.2};
         List<AiPricesResponse.ComparativaFarmacia> comp = new ArrayList<>();
@@ -2081,19 +1938,19 @@ public class AiService {
     }
 
     private AiSoapResponse leerSoap(String json) throws Exception {
-        JsonNode n = mapper.readTree(extraerJson(json));
+        JsonNode n = mapper.readTree(extractJson(json));
         AiSoapResponse r = new AiSoapResponse();
-        r.setResumenParaMedico(textoNodo(n, "resumenParaMedico"));
-        r.setEnfoqueEnConsulta(textoNodo(n, "enfoqueEnConsulta"));
-        r.setPreguntasSugeridas(textoNodo(n, "preguntasSugeridas"));
-        r.setMedicamentosSugeridos(textoNodo(n, "medicamentosSugeridos"));
-        r.setCuidados(textoNodo(n, "cuidados"));
-        r.setSubjetivo(textoNodo(n, "subjetivo"));
-        r.setObjetivo(textoNodo(n, "objetivo"));
-        r.setApreciacion(textoNodo(n, "apreciacion"));
-        r.setPlan(textoNodo(n, "plan"));
-        r.setDiagnosticoPresuntivo(textoNodo(n, "diagnosticoPresuntivo"));
-        r.setProcedimientosSugeridos(textoNodo(n, "procedimientosSugeridos"));
+        r.setResumenParaMedico(nodeText(n, "resumenParaMedico"));
+        r.setEnfoqueEnConsulta(nodeText(n, "enfoqueEnConsulta"));
+        r.setPreguntasSugeridas(nodeText(n, "preguntasSugeridas"));
+        r.setMedicamentosSugeridos(nodeText(n, "medicamentosSugeridos"));
+        r.setCuidados(nodeText(n, "cuidados"));
+        r.setSubjetivo(nodeText(n, "subjetivo"));
+        r.setObjetivo(nodeText(n, "objetivo"));
+        r.setApreciacion(nodeText(n, "apreciacion"));
+        r.setPlan(nodeText(n, "plan"));
+        r.setDiagnosticoPresuntivo(nodeText(n, "diagnosticoPresuntivo"));
+        r.setProcedimientosSugeridos(nodeText(n, "procedimientosSugeridos"));
         r.setModoDemo(false);
         return r;
     }
@@ -2101,10 +1958,10 @@ public class AiService {
     private AiConsultaSimResponse leerConsulta(String json) throws Exception {
         JsonNode n = mapper.readTree(cleanJson(json));
         return AiConsultaSimResponse.builder()
-                .dicePaciente(textoNodo(n, "dicePaciente"))
-                .pistaParaElMedico(textoNodo(n, "pistaParaElMedico"))
-                .medicamentosSugeridos(textoNodo(n, "medicamentosSugeridos"))
-                .cuidados(textoNodo(n, "cuidados"))
+                .dicePaciente(nodeText(n, "dicePaciente"))
+                .pistaParaElMedico(nodeText(n, "pistaParaElMedico"))
+                .medicamentosSugeridos(nodeText(n, "medicamentosSugeridos"))
+                .cuidados(nodeText(n, "cuidados"))
                 .modoDemo(false)
                 .build();
     }
@@ -2112,7 +1969,7 @@ public class AiService {
     private AiConsultaSimResponse consultaMock(AiConsultaSimRequest req) {
         String motivo = nvl(req.getMotivo());
         String contexto = (req.getContexto() == null ? "" : req.getContexto()).toLowerCase();
-        String pregunta = req.getPregunta() == null ? "" : sinAcentoAdmin(req.getPregunta()).toLowerCase();
+        String pregunta = req.getPregunta() == null ? "" : foldAccents(req.getPregunta()).toLowerCase();
         java.util.regex.Matcher dias = java.util.regex.Pattern.compile("(\\d+)\\s*d[ií]as").matcher(contexto);
         String cuanto = dias.find() ? dias.group(1) : "";
         String dice;
@@ -2150,7 +2007,7 @@ public class AiService {
 
     private void completarLugares(AiPricesResponse r, AiPricesRequest req) {
         if (r.getPresentacionEstimada() == null || r.getPresentacionEstimada().isBlank()) {
-            r.setPresentacionEstimada(presentacionDe(req));
+            r.setPresentacionEstimada(estimatedPack(req));
         }
         if (r.getComparativa() == null) return;
         List<String[]> puntos = puntosDeVenta(req.getCiudad());
@@ -2166,7 +2023,7 @@ public class AiService {
         }
     }
 
-    private String presentacionDe(AiPricesRequest req) {
+    private String estimatedPack(AiPricesRequest req) {
         if (req.getPresentacion() != null && !req.getPresentacion().isBlank()) return req.getPresentacion().trim();
         String med = req.getMedicamento() == null ? "" : req.getMedicamento().toLowerCase();
         if (med.contains("jarabe") || med.contains("suspens")) return "frasco de jarabe";
@@ -2176,7 +2033,7 @@ public class AiService {
     }
 
     private List<String[]> puntosDeVenta(String ciudad) {
-        String c = sinAcentoAdmin(nvl(ciudad)).toLowerCase();
+        String c = foldAccents(nvl(ciudad)).toLowerCase();
         if (c.contains("pasto")) return List.of(
                 par("La Rebaja", "Valle de Atriz"),
                 par("Cruz Verde", "Unicentro"),
@@ -2224,7 +2081,7 @@ public class AiService {
         return new String[] { nombre, lugar };
     }
 
-    private String textoNodo(JsonNode n, String campo) {
+    private String nodeText(JsonNode n, String campo) {
         if (n == null) return "";
         JsonNode v = n.get(campo);
         if (v == null || v.isNull()) return "";
@@ -2241,11 +2098,7 @@ public class AiService {
 
     private static String nvl(String s) { return s == null || s.isBlank() ? "no informado" : s; }
 
-    private static List<String> nvlList(List<String> in) {
-        return in == null ? new ArrayList<>() : new ArrayList<>(in);
-    }
-
-    private static String userVisionPiel(AiDermatologyRequest req) {
+    private static String skinVisionPrompt(AiDermatologyRequest req) {
         return "Observa la foto (si existe) y el relato del paciente. " +
                 "Descripción: " + nvl(req.getDescripcion()) +
                 " | Evolución: " + nvl(req.getTiempoEvolucion()) +
@@ -2254,13 +2107,13 @@ public class AiService {
                 ? "no adjunta" : "adjunta, analízala pixel a pixel");
     }
 
-    private static String extraerBase64(String dataUrl) {
+    private static String extractBase64(String dataUrl) {
         if (dataUrl == null) return "";
         int coma = dataUrl.indexOf(',');
         return coma >= 0 ? dataUrl.substring(coma + 1) : dataUrl;
     }
 
-    private static String mimeDeDataUrl(String dataUrl) {
+    private static String mimeFromDataUrl(String dataUrl) {
         if (dataUrl == null) return "image/jpeg";
         String t = dataUrl.toLowerCase();
         if (t.startsWith("data:image/png")) return "image/png";
@@ -2270,24 +2123,24 @@ public class AiService {
     }
 
     /** Claude first (text or photo). Gemini light only if Haiku does not answer. */
-    private Optional<String> consultarGemini(String system, String user, String imagenDataUrl) {
-        return consultarGemini(system, user, imagenDataUrl, 900, 8);
+    private Optional<String> askMultimodal(String system, String user, String imagenDataUrl) {
+        return askMultimodal(system, user, imagenDataUrl, 900, 8);
     }
 
-    private Optional<String> consultarGemini(String system, String user, String imagenDataUrl, int tokens, int espera) {
-        String b64 = extraerBase64(imagenDataUrl);
-        String mime = mimeDeDataUrl(imagenDataUrl);
+    private Optional<String> askMultimodal(String system, String user, String imagenDataUrl, int tokens, int espera) {
+        String b64 = extractBase64(imagenDataUrl);
+        String mime = mimeFromDataUrl(imagenDataUrl);
         boolean hayFoto = !b64.isBlank();
         if (hasAnthropic()) {
             Optional<String> claude = callAnthropic(system, user, tokens, hayFoto ? mime : null, hayFoto ? b64 : null, espera);
             if (claude.isPresent()) return Optional.of(cleanJson(claude.get()));
         }
-        if (geminiActivo() && hayFoto) {
+        if (geminiEnabled() && hayFoto) {
             String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
             Optional<String> vision = callGeminiModel(light, system, user, mime, b64, true, 900, 10, false);
             if (vision.isPresent()) return vision;
         }
-        if (geminiActivo()) {
+        if (geminiEnabled()) {
             String light = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
             Optional<String> rapido = callGeminiModel(light, system, user, null, null, true, 900, 8, false);
             if (rapido.isPresent()) return rapido;
@@ -2295,7 +2148,7 @@ public class AiService {
         return Optional.empty();
     }
 
-    private String especialidadesDisponibles() {
+    private String availableSpecialties() {
         try {
             List<String> nombres = specialtyService.names();
             if (nombres != null && !nombres.isEmpty()) return String.join(", ", nombres);
@@ -2305,223 +2158,22 @@ public class AiService {
         return String.join(", ", SpecialtyService.DEFAULTS);
     }
 
-    private String extraerJson(String bruto) {
+    private String extractJson(String bruto) {
         String t = cleanJson(bruto);
         int i = t.indexOf('{');
         int f = t.lastIndexOf('}');
         return (i >= 0 && f > i) ? t.substring(i, f + 1) : t;
     }
 
-    private static boolean esJergaTecnica(String s) {
-        if (s == null) return false;
-        String t = s.toLowerCase();
-        return t.contains("dataset") || t.contains("ham10000") || t.contains("pad-ufes")
-                || t.contains("extratrees") || t.contains("medmcqa") || t.contains("medqa")
-                || t.contains("hugging") || t.contains("esi/mts") || t.contains("modelo local")
-                || t.contains("precisión de prueba") || t.contains("bosque") || t.contains("extra trees")
-                || t.contains("etiquetas tipo") || t.contains("clasificador") || t.contains("gemini no");
-    }
-
-    private static List<String> sinJerga(List<String> in) {
-        List<String> out = new ArrayList<>();
-        for (String s : nvlList(in)) {
-            if (!s.isBlank() && !esJergaTecnica(s)) out.add(s);
-        }
-        return out;
-    }
-
-    private static AiTriageResponse limpiarTriage(AiTriageResponse r, AiTriageRequest req) {
-        corregirEspecialidad(r, req);
-        r.setHallazgos(sinJerga(r.getHallazgos()));
-        r.setEscala("Orientación clínica");
-        if (r.getResumen() != null && (esJergaTecnica(r.getResumen()) || resumenCanned(r.getResumen()))) {
-            r.setResumen(null);
-        }
-        if (r.getRecomendaciones() != null && esJergaTecnica(r.getRecomendaciones())) {
-            r.setRecomendaciones(null);
-        }
-        if (r.getResumen() == null || r.getResumen().isBlank()) {
-            r.setResumen(orientacionDesdeRelato(req, r));
-        }
-        if (r.getRecomendaciones() == null || r.getRecomendaciones().isBlank() || cuidadosPobres(r.getRecomendaciones())) {
-            r.setRecomendaciones(cuidadosHastaLaCita(req, r));
-        }
-        if (r.getHallazgos() == null || r.getHallazgos().isEmpty()) {
-            r.setHallazgos(hallazgosDelCaso(req, r));
-        }
-        return r;
-    }
-
-    private AiTriageResponse orientarSinGemini(AiTriageResponse local, AiTriageRequest req) {
-        normalizarTriage(local, local);
-        corregirEspecialidad(local, req);
-        local.setModoDemo(true);
-        local.setResumen(orientacionDesdeRelato(req, local));
-        local.setRecomendaciones(cuidadosHastaLaCita(req, local));
-        local.setHallazgos(hallazgosDelCaso(req, local));
-        return limpiarTriage(local, req);
-    }
-
-    private static void completarOrientacion(AiTriageResponse r, AiTriageResponse local, AiTriageRequest req) {
-        corregirEspecialidad(r, req);
-        if (resumenPobre(r.getResumen(), local == null ? null : local.getResumen())) {
-            r.setResumen(orientacionDesdeRelato(req, r));
-        }
-        if (cuidadosPobres(r.getRecomendaciones())) {
-            r.setRecomendaciones(cuidadosHastaLaCita(req, r));
-        }
-    }
-
-    private static boolean resumenPobre(String resumen, String local) {
-        if (resumen == null || resumen.isBlank() || esJergaTecnica(resumen) || resumenCanned(resumen)) return true;
-        String t = resumen.trim();
-        if (local != null && t.equalsIgnoreCase(local.trim())) return true;
-        String l = t.toLowerCase();
-        return t.length() < 140 && (l.startsWith("severidad ") || l.startsWith("cuentas:"));
-    }
-
-    private static boolean resumenCanned(String resumen) {
-        String t = resumen.toLowerCase();
-        return t.contains("lo adecuado es agendar") || t.startsWith("cuentas:");
-    }
-
-    private static boolean cuidadosPobres(String rec) {
-        if (rec == null || rec.isBlank() || esJergaTecnica(rec)) return true;
-        String t = rec.trim().toLowerCase();
-        return t.equals("si empeora, hay fiebre o el dolor es intenso, consulta de forma presencial.")
-                || (t.startsWith("reserva la cita con") && t.contains("no te automediques con productos a los que seas alérgico"));
-    }
-
-    private static void corregirEspecialidad(AiTriageResponse r, AiTriageRequest req) {
-        String s = dato(req == null ? null : req.getSintomas()).toLowerCase();
-        if (s.isBlank()) return;
-        String esp = r.getEspecialidadRecomendada() == null ? "" : r.getEspecialidadRecomendada().toLowerCase();
-        boolean piel = contiene(s, "piel", "mancha", "roncha", "granito", "acné", "acne", "erupcion", "erupción",
-                "sarpullido", "urticaria", "lesión cut", "lesion cut");
-        if (digestivo(s) && !piel && (esp.contains("dermat") || esp.isBlank())) {
-            r.setEspecialidadRecomendada("Gastroenterología");
-            if (r.getSeveridad() == null || r.getSeveridad().isBlank() || "Verde".equalsIgnoreCase(r.getSeveridad()) || "Azul".equalsIgnoreCase(r.getSeveridad())) {
-                r.setSeveridad("Amarillo");
-            }
-            if (r.getNivelEsi() == null || r.getNivelEsi() >= 4) r.setNivelEsi(3);
-            if (r.getPrioridad() == null || r.getPrioridad() <= 3) r.setPrioridad(5);
-            if (r.getResumen() != null && r.getResumen().toLowerCase().contains("dermatolog")) r.setResumen(null);
-            if (r.getRecomendaciones() != null && r.getRecomendaciones().toLowerCase().contains("dermatolog")) r.setRecomendaciones(null);
-        }
-    }
-
-    private static String orientacionDesdeRelato(AiTriageRequest req, AiTriageResponse r) {
-        String sintomas = dato(req.getSintomas());
-        String duracion = dato(req.getDuracion());
-        String ant = dato(req.getAntecedentes());
-        String sev = r.getSeveridad() == null ? "Amarillo" : r.getSeveridad();
-        String esp = r.getEspecialidadRecomendada() == null ? "Medicina General" : r.getEspecialidadRecomendada();
-        String s = sintomas.toLowerCase();
-        StringBuilder sb = new StringBuilder();
-        if (digestivo(s)) {
-            sb.append("Ese dolor de barriga");
-            if (!duracion.isBlank()) sb.append(" que llevas ").append(duracion);
-            sb.append(" puede ser una indigestión, gastritis o algo que comiste y no te sentó.");
-            if (contiene(s, "muscul", "cuerpo", "espalda", "lumb")) {
-                sb.append(" Los dolores musculares a veces acompañan cuando hay un cuadro viral o el cuerpo está inflamado.");
-            }
-        } else if (contiene(s, "muscul", "cuerpo cortado", "lumbago", "espalda")) {
-            sb.append("Ese dolor muscular");
-            if (!duracion.isBlank()) sb.append(" de ").append(duracion);
-            sb.append(" puede ser una contractura, cansancio o un cuadro viral leve.");
-        } else if (contiene(s, "cabeza", "cefalea", "mareo")) {
-            sb.append("Ese malestar de cabeza");
-            if (!duracion.isBlank()) sb.append(" (").append(duracion).append(")");
-            sb.append(" conviene valorarlo; a veces es tensión, migraña o falta de hidratación.");
-        } else if (contiene(s, "tos", "gripe", "resfriado", "garganta")) {
-            sb.append("Lo que describes encaja con un cuadro respiratorio leve");
-            if (!duracion.isBlank()) sb.append(" de ").append(duracion);
-            sb.append(".");
-        } else {
-            sb.append("Por lo que cuentas");
-            if (!sintomas.isBlank()) sb.append(" (").append(sintomas).append(")");
-            if (!duracion.isBlank()) sb.append(", ").append(duracion);
-            sb.append(", vale la pena orientarlo con un médico.");
-        }
-        if (!ant.isBlank()) {
-            sb.append(" Ten mucho cuidado con tus alergias y antecedentes (").append(ant)
-                    .append("): no te automediques ni tomes nada que te hayas prohibido.");
-        }
-        sb.append(" La orientación es ").append(sev).append(". Agenda ").append(esp)
-                .append(" ahora; el médico confirma qué está pasando.");
-        return sb.toString();
-    }
-
-    private static String cuidadosHastaLaCita(AiTriageRequest req, AiTriageResponse r) {
-        String esp = r.getEspecialidadRecomendada() == null ? "la especialidad sugerida" : r.getEspecialidadRecomendada();
-        String s = dato(req.getSintomas()).toLowerCase();
-        String ant = dato(req.getAntecedentes());
-        StringBuilder sb = new StringBuilder();
-        sb.append("Reserva ").append(esp).append(" sin dejar pasar el cuadro. ");
-        if (digestivo(s)) {
-            sb.append("Hasta la cita, come liviano (caldo, arroz, banano), toma agua de a sorbos y evita frituras, picante y alcohol. ");
-        } else {
-            sb.append("Hasta ver al médico, descansa, hidrátate y anota cómo evoluciona lo que sientes. ");
-        }
-        if (!ant.isBlank()) {
-            String a = ant.toLowerCase();
-            sb.append("Por tus alergias (").append(ant).append(") no te automediques con lo que te da reacción. ");
-            if (contiene(a, "dipirona", "metamizol")) sb.append("No tomes dipirona ni metamizol. ");
-            if (contiene(a, "huevo")) sb.append("Evita huevo y lo que lo lleve. ");
-            if (contiene(a, "látex", "latex")) sb.append("Avisa que eres alérgico al látex. ");
-            if (contiene(a, "hongo", "moho")) sb.append("Evita alimentos con moho y ambientes húmedos. ");
-        } else {
-            sb.append("No te automediques. ");
-        }
-        if (digestivo(s)) {
-            sb.append("Si el dolor se clava, el abdomen se pone duro, hay fiebre, vómito con sangre o no puedes tomar líquidos, ve a urgencias antes de la cita.");
-        } else {
-            sb.append("Si el dolor se vuelve mucho más fuerte, hay fiebre o te cuesta respirar, ve a urgencias antes de la cita.");
-        }
-        return sb.toString();
-    }
-
-    private static List<String> hallazgosDelCaso(AiTriageRequest req, AiTriageResponse r) {
-        List<String> h = new ArrayList<>();
-        String s = dato(req.getSintomas());
-        String dur = dato(req.getDuracion());
-        String ant = dato(req.getAntecedentes());
-        if (!s.isBlank()) h.add("Lo que sientes: " + s);
-        if (!dur.isBlank()) h.add("Desde hace: " + dur);
-        if (!ant.isBlank()) h.add("Alergias y antecedentes a cuidar: " + ant);
-        if (r.getEspecialidadRecomendada() != null) {
-            h.add("Especialidad que encaja con este relato: " + r.getEspecialidadRecomendada());
-        }
-        return h;
-    }
-
-    private static boolean digestivo(String s) {
-        return contiene(s, "barriga", "abdomen", "estomago", "estómago", "panza", "gastr", "indigest",
-                "vomit", "vómit", "diarrea", "nause", "náuse", "acidez", "agruras", "colico", "cólico", "empacho");
-    }
-
-    private static boolean contiene(String texto, String... claves) {
-        if (texto == null || texto.isBlank()) return false;
-        for (String c : claves) {
-            if (c != null && !c.isBlank() && texto.contains(c.toLowerCase())) return true;
-        }
-        return false;
-    }
-
-    private static String dato(String s) {
-        if (s == null || s.isBlank() || "no informado".equalsIgnoreCase(s.trim())) return "";
-        return s.trim();
-    }
-
-    private static AiDermatologyResponse limpiarPiel(AiDermatologyResponse r, AiDermatologyRequest req) {
+    private static AiDermatologyResponse polishSkin(AiDermatologyResponse r, AiDermatologyRequest req) {
         if (r.getNivelRiesgo() != null) r.setNivelRiesgo(r.getNivelRiesgo().trim().toUpperCase());
-        r.setCaracteristicasObservadas(sinJerga(r.getCaracteristicasObservadas()));
-        r.setDiagnosticosDiferenciales(sinJerga(r.getDiagnosticosDiferenciales()));
-        if (r.getAdvertencia() != null && esJergaTecnica(r.getAdvertencia())) r.setAdvertencia(null);
-        if (r.getRecomendaciones() != null && esJergaTecnica(r.getRecomendaciones())) r.setRecomendaciones(null);
-        if (r.getExplicacion() == null || r.getExplicacion().isBlank() || esJergaTecnica(r.getExplicacion())
+        r.setCaracteristicasObservadas(TriageOrientation.withoutJargon(r.getCaracteristicasObservadas()));
+        r.setDiagnosticosDiferenciales(TriageOrientation.withoutJargon(r.getDiagnosticosDiferenciales()));
+        if (r.getAdvertencia() != null && TriageOrientation.isJargon(r.getAdvertencia())) r.setAdvertencia(null);
+        if (r.getRecomendaciones() != null && TriageOrientation.isJargon(r.getRecomendaciones())) r.setRecomendaciones(null);
+        if (r.getExplicacion() == null || r.getExplicacion().isBlank() || TriageOrientation.isJargon(r.getExplicacion())
                 || r.getExplicacion().trim().length() < 80) {
-            r.setExplicacion(explicacionPiel(r.getNivelRiesgo(), req));
+            r.setExplicacion(skinExplanation(r.getNivelRiesgo(), req));
         }
         if (r.getRecomendaciones() == null || r.getRecomendaciones().isBlank()) {
             r.setRecomendaciones("Agenda dermatología con esta foto y la descripción. Mientras tanto no aprietes la zona, mantenla limpia y consulta antes si crece, duele más o aparece fiebre.");
@@ -2529,9 +2181,9 @@ public class AiService {
         return r;
     }
 
-    private static String explicacionPiel(String nivel, AiDermatologyRequest req) {
+    private static String skinExplanation(String nivel, AiDermatologyRequest req) {
         String n = nivel == null ? "MEDIO" : nivel.toUpperCase();
-        String porque = switch (n) {
+        String because = switch (n) {
             case "CRITICO" -> "Hay signos de alarma (dolor fuerte, extensión rápida o posible infección grave). Hay que valorarlo ya.";
             case "ALTO" -> "La zona se ve inflamada o alterada de forma importante. Puede ser infección o lesión que no debe esperarse.";
             case "MEDIO" -> "La lesión que describes conviene revisarla pronto, aunque no parece una emergencia inmediata.";
@@ -2539,38 +2191,11 @@ public class AiService {
         };
         String relato = (nvl(req.getDescripcion()).equals("no informado") ? "" : req.getDescripcion().trim());
         if (relato.isBlank() && req.getSintomasAsociados() != null) relato = req.getSintomasAsociados().trim();
-        if (!relato.isBlank()) return porque + " Relato: " + relato + ".";
-        return porque;
+        if (!relato.isBlank()) return because + " Relato: " + relato + ".";
+        return because;
     }
 
-    private static void normalizarTriage(AiTriageResponse r, AiTriageResponse local) {
-        r.setHallazgos(sinJerga(r.getHallazgos()));
-        if (r.getEspecialidadRecomendada() == null || r.getEspecialidadRecomendada().isBlank()) {
-            r.setEspecialidadRecomendada(local.getEspecialidadRecomendada());
-        }
-        if (r.getSeveridad() == null || r.getSeveridad().isBlank()) r.setSeveridad(local.getSeveridad());
-        else r.setSeveridad(capitalizarSeveridad(r.getSeveridad()));
-        if (r.getNivelEsi() == null) r.setNivelEsi(local.getNivelEsi());
-        if (r.getPrioridad() == null) r.setPrioridad(local.getPrioridad());
-        if (r.getEscala() == null || r.getEscala().isBlank() || esJergaTecnica(r.getEscala())) {
-            r.setEscala("Orientación clínica");
-        }
-        if (r.getResumen() == null || r.getResumen().isBlank() || esJergaTecnica(r.getResumen())) {
-            r.setResumen(local.getResumen());
-        }
-    }
-
-    private static String capitalizarSeveridad(String s) {
-        String t = s.trim().toLowerCase();
-        if (t.contains("rojo")) return "Rojo";
-        if (t.contains("naranja")) return "Naranja";
-        if (t.contains("amarillo")) return "Amarillo";
-        if (t.contains("azul")) return "Azul";
-        if (t.contains("verde")) return "Verde";
-        return s;
-    }
-
-    private static AiDermatologyResponse fusionarPiel(AiDermatologyResponse gemini, AiDermatologyResponse local) {
+    private static AiDermatologyResponse mergeSkin(AiDermatologyResponse gemini, AiDermatologyResponse local) {
         if (gemini.getNivelRiesgo() == null || gemini.getNivelRiesgo().isBlank()) {
             gemini.setNivelRiesgo(local.getNivelRiesgo());
         } else {

@@ -26,7 +26,7 @@ public class AppointmentRequest {
     private String triageDuracion;
     private String triageAntecedentes;
 
-    /* Dermatología CNN */
+    /* Optional skin-review fields from booking. */
     private String dermatologiaReportaIa;
     private Double dermatologiaScoreRiesgo;
     private String dermatologiaTopDiagnostico;

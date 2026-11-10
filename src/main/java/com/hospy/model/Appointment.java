@@ -52,14 +52,13 @@ public class Appointment {
 
     private LocalDateTime concluidaEn;
 
-    /* ====== Campos IA adjuntos al momento de AGENDAR (guardados automáticamente) ====== */
-    /* Triage NLP BERT/RoBERTa (ESI/MTS) */
-    private String triageSeveridad;        /* "ROJO / NARANJA / AMARILLO / VERDE / AZUL" */
-    private Integer triageNivelEsi;        /* 1-5, Emergency Severity Index */
-    private Integer triagePrioridad;       /* 1-10 */
-    private String triageEspecialidadSugerida;  /* "Dermatología", "Medicina General"... */
+    /* Assistant fields stored when the patient books. */
+    private String triageSeveridad;
+    private Integer triageNivelEsi;
+    private Integer triagePrioridad;
+    private String triageEspecialidadSugerida;
     @Column(columnDefinition = "TEXT")
-    private String triageResumen;          /* Resumen clínico IA que lee el médico */
+    private String triageResumen;
     @Column(columnDefinition = "TEXT")
     private String triageSintomas;
     @Column(length = 255)
@@ -67,9 +66,8 @@ public class Appointment {
     @Column(columnDefinition = "TEXT")
     private String triageAntecedentes;
 
-    /* Predermatología CNN ResNet/EfficientNet */
     @Column(columnDefinition = "TEXT")
-    private String dermatologiaReportaIa;  /* Reporte completo + diferenciales + recomendaciones */
-    private Double dermatologiaScoreRiesgo; /* 0.0 a 1.0 */
-    private String dermatologiaTopDiagnostico; /* Diagnóstico principal sugerido */
+    private String dermatologiaReportaIa;
+    private Double dermatologiaScoreRiesgo;
+    private String dermatologiaTopDiagnostico;
 }
