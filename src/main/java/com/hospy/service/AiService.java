@@ -207,20 +207,12 @@ public class AiService {
     }
 
     public String transcriptionStatus() {
-        if (hasAnthropic()) return "Operativo — Claude + voz del navegador";
         if (geminiActivo()) return "Operativo — Gemini Audio";
         if (hasOpenAi()) return "Operativo — Whisper";
         return "Voz del navegador (Chrome o Edge)";
     }
 
     public AiTranscriptionResponse transcribe(byte[] audio, String contentType) {
-        if (hasAnthropic()) {
-            Optional<String> claude = transcribeWithAnthropic(audio, contentType);
-            if (claude.isPresent() && !claude.get().isBlank()) {
-                return new AiTranscriptionResponse(claude.get().trim(), false,
-                        "Transcripción Claude lista para revisión.");
-            }
-        }
         if (geminiActivo()) {
             Optional<String> gemini = transcribeWithGemini(audio, contentType);
             if (gemini.isPresent() && !gemini.get().isBlank()) {
@@ -230,7 +222,7 @@ public class AiService {
         }
         if (!hasOpenAi()) {
             return new AiTranscriptionResponse("", true,
-                    "No se escuchó nada. Pulsa Hablar, espera a ver el texto y luego Terminar y enviar.");
+                    "Habla en Chrome o Edge hasta ver el texto, o escribe. Claude no transcribe audio.");
         }
         String boundary = "HospyBoundary" + UUID.randomUUID();
         try {
