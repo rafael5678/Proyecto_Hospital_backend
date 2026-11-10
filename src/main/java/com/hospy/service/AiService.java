@@ -24,6 +24,7 @@ import java.util.UUID;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -50,6 +51,9 @@ public class AiService {
     private String geminiLightModel;
 
     private final Map<String, Long> modeloAgotadoHasta = new java.util.concurrent.ConcurrentHashMap<>();
+    private final AtomicLong haikuEntrada = new AtomicLong();
+    private final AtomicLong haikuSalida = new AtomicLong();
+    private final AtomicLong haikuLlamadas = new AtomicLong();
 
     @Autowired
     private SpecialtyService specialtyService;
@@ -105,30 +109,28 @@ public class AiService {
 
     @PostConstruct
     void logEstadoGemini() {
-        log.info("Gemini: {} modelo={}", hasGemini() ? "clave presente" : "SIN CLAVE", geminiModel);
+        log.info("Gemini: {} modelo={} | Claude: {}", hasGemini() ? "clave presente" : "SIN CLAVE", geminiModel,
+                hasAnthropic() ? anthropicModel : "SIN CLAVE");
         Thread t = new Thread(() -> {
             try {
                 warmupConsult();
             } catch (Exception ignored) {
                 /* first consult still works without this handshake */
             }
-        }, "hospy-gemini-warmup");
+        }, "hospy-haiku-warmup");
         t.setDaemon(true);
         t.start();
     }
 
-    /** Tiny calls so Gemini and Claude Haiku are warm before the first consult question. */
+    /** Tiny Haiku call so TLS is warm before the first question. Gemini stays as backup only. */
     public boolean warmupConsult() {
-        boolean listo = false;
-        if (hasGemini()) {
-            String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
-            listo = callGeminiModel(modelo, "Responde únicamente con la palabra LISTO.", "LISTO",
-                    null, null, false, 8, 8, false).isPresent();
-        }
         if (hasAnthropic()) {
-            listo = callAnthropic("Responde únicamente con la palabra LISTO.", "LISTO", 8).isPresent() || listo;
+            return callAnthropic("Responde únicamente con la palabra LISTO.", "LISTO", 8).isPresent();
         }
-        return listo;
+        if (!hasGemini()) return false;
+        String modelo = geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel;
+        return callGeminiModel(modelo, "Responde únicamente con la palabra LISTO.", "LISTO",
+                null, null, false, 8, 8, false).isPresent();
     }
 
     public boolean hasAnthropic() {
@@ -140,13 +142,27 @@ public class AiService {
     }
 
     public String versionIa() {
-        if (hasGemini() && hasAnthropic()) {
-            return "Hospy AI — Gemini (" + geminiModel + ") + Claude (" + anthropicModel + ")";
+        if (hasAnthropic()) {
+            return "Hospy AI — Claude Haiku 5.5 · " + haikuLlamadas.get() + " respuestas · ~"
+                    + gastoHaikuUsd() + " USD esta sesión";
         }
         if (hasGemini()) return "Hospy AI — Gemini (" + geminiModel + ")";
-        if (hasAnthropic()) return "Hospy AI — Claude (" + anthropicModel + ")";
         if (hasOpenAi()) return "Hospy AI — OpenAI (" + model + ")";
         return "Hospy AI — modo demo local";
+    }
+
+    public Map<String, String> gastoHaiku() {
+        Map<String, String> out = new LinkedHashMap<>();
+        out.put("llamadas", String.valueOf(haikuLlamadas.get()));
+        out.put("tokensEntrada", String.valueOf(haikuEntrada.get()));
+        out.put("tokensSalida", String.valueOf(haikuSalida.get()));
+        out.put("usdEstimado", gastoHaikuUsd());
+        return out;
+    }
+
+    private String gastoHaikuUsd() {
+        double usd = (haikuEntrada.get() / 1_000_000.0) * 0.10 + (haikuSalida.get() / 1_000_000.0) * 0.50;
+        return String.format(java.util.Locale.US, "%.4f", usd);
     }
 
     /** Checks that Gemini answers. Does not invent metrics or persist data. */
@@ -239,13 +255,13 @@ public class AiService {
     }
 
     private Optional<String> callLlm(String systemPrompt, String userPrompt, boolean ligeroPrimero, int maxTokens) {
-        if (hasGemini()) {
-            Optional<String> gemini = callGemini(systemPrompt, userPrompt, null, null, true, ligeroPrimero, maxTokens);
-            if (gemini.isPresent()) return gemini;
-        }
         if (hasAnthropic()) {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, maxTokens);
             if (claude.isPresent()) return claude;
+        }
+        if (hasGemini()) {
+            Optional<String> gemini = callGemini(systemPrompt, userPrompt, null, null, true, ligeroPrimero, maxTokens);
+            if (gemini.isPresent()) return gemini;
         }
         if (hasOpenAi()) return callOpenAi(systemPrompt, userPrompt);
         return Optional.empty();
@@ -264,7 +280,7 @@ public class AiService {
             body.put("messages", List.of(Map.of("role", "user", "content", userPrompt)));
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(anthropicUrl))
-                    .timeout(Duration.ofSeconds(Math.max(timeout == null ? 30 : timeout, 20)))
+                    .timeout(Duration.ofSeconds(15))
                     .header("Content-Type", "application/json")
                     .header("x-api-key", anthropicKey)
                     .header("anthropic-version", "2023-06-01")
@@ -276,7 +292,9 @@ public class AiService {
                 log.warn("Anthropic {} status={} body={}", anthropicModel, resp.statusCode(), snippet);
                 return Optional.empty();
             }
-            JsonNode parts = mapper.readTree(resp.body()).path("content");
+            JsonNode root = mapper.readTree(resp.body());
+            contarUsoHaiku(root.path("usage"));
+            JsonNode parts = root.path("content");
             StringBuilder texto = new StringBuilder();
             if (parts.isArray()) {
                 for (JsonNode part : parts) {
@@ -367,28 +385,7 @@ public class AiService {
         return modelos;
     }
 
-    private boolean consultGeminiTired() {
-        long ahora = System.currentTimeMillis();
-        for (String modelo : geminiModelsConsult()) {
-            if (modeloAgotadoHasta.getOrDefault(modelo, 0L) <= ahora) return false;
-        }
-        return !geminiModelsConsult().isEmpty();
-    }
-
     private Optional<String> callLlmConsult(String systemPrompt, String userPrompt, int maxTokens) {
-        if (hasGemini() && !consultGeminiTired()) {
-            long ahora = System.currentTimeMillis();
-            List<String> modelos = hasAnthropic()
-                    ? List.of(geminiLightModel == null || geminiLightModel.isBlank() ? geminiModel : geminiLightModel.trim())
-                    : geminiModelsConsult();
-            for (String modelo : modelos) {
-                if (modelo == null || modelo.isBlank()) continue;
-                if (modeloAgotadoHasta.getOrDefault(modelo, 0L) > ahora) continue;
-                Optional<String> out = callGeminiModel(modelo, systemPrompt, userPrompt, null, null, true,
-                        maxTokens, 8, false);
-                if (out.isPresent()) return out;
-            }
-        }
         if (hasAnthropic()) {
             Optional<String> claude = callAnthropic(systemPrompt, userPrompt, maxTokens);
             if (claude.isPresent()) return claude;
@@ -404,6 +401,13 @@ public class AiService {
         }
         if (hasOpenAi()) return callOpenAi(systemPrompt, userPrompt);
         return Optional.empty();
+    }
+
+    private void contarUsoHaiku(JsonNode usage) {
+        if (usage == null || usage.isMissingNode()) return;
+        haikuEntrada.addAndGet(Math.max(0, usage.path("input_tokens").asLong(0)));
+        haikuSalida.addAndGet(Math.max(0, usage.path("output_tokens").asLong(0)));
+        haikuLlamadas.incrementAndGet();
     }
 
     private static void addModel(List<String> modelos, String modelo) {
@@ -1613,12 +1617,13 @@ public class AiService {
 
     public AiConsultaSimResponse consultaSimulada(AiConsultaSimRequest req) {
         final String system = """
-                Eres el paciente, sentado frente al médico. Hablas en primera persona, en español de Colombia, con voz natural y ortografía correcta.
-                El motivo y el contexto los escribió el médico a la carrera: pueden tener faltas. Tú NO los copies. Entiende qué le pasa al paciente y háblalo bien (fuertes, no furetes; brazo, no nrazo).
-                Contesta SOLO la pregunta de este turno, en dos a cinco frases. No vuelvas a contar todo el relato ni el saludo.
-                Si ya hablaste, sigue la conversación: recuerdas lo dicho y no te presentas de nuevo.
-                No hables como un informe ni des un diagnóstico. No digas "si me pregunta", "se lo cuento" ni que eres una simulación.
-                Si pregunta algo que no está escrito (desde cuándo, picazón, qué has hecho, alergias, fiebre), inventa un dato sencillo, creíble y estable.
+                Eres el paciente, sentado frente al médico. Hablas en primera persona, en español de Colombia, con voz natural.
+                Respondes en dos a cinco frases, como en una consulta de verdad. No hables como un informe ni des un diagnóstico.
+                El cuaderno del médico puede tener faltas: entiende el sentido y habla con ortografía correcta. No copies el texto.
+                Contesta la pregunta de este turno. Si la conversación ya empezó, no te presentes de nuevo ni repitas todo el relato.
+                Si pregunta algo que no está escrito (desde cuándo, picazón, qué has hecho, alergias, fiebre),
+                completa el dato de forma sencilla, creíble y estable. Si vuelve a preguntarlo, la misma respuesta.
+                Nunca digas que no tienes el dato, que eres una simulación, ni "si me pregunta se lo cuento".
                 Responde solo JSON, sin arreglos:
                 {"dicePaciente":"lo que dices en voz alta","pistaParaElMedico":"",
                  "medicamentosSugeridos":"opción · presentación · para qué\\notra",
@@ -1636,9 +1641,8 @@ public class AiService {
                 "\nDiálogo previo:\n" + (dialogo.isBlank() ? "aún no empieza" : dialogo) +
                 "\nPregunta del médico: " + (req.getPregunta() == null || req.getPregunta().isBlank()
                 ? "saluda y cuenta con tus palabras lo que te trajo" : req.getPregunta());
-        user += "\nHabla con ortografía correcta. No copies el contexto. Contesta la pregunta del médico, no el relato entero.";
         if (primerTurno) {
-            user += "\nEste es el primer turno: deja medicamentosSugeridos y cuidados vacíos.";
+            user += "\nPrimer turno: deja medicamentosSugeridos y cuidados vacíos.";
         }
         Optional<String> llm = callLlmConsult(system, user, primerTurno ? 700 : 900);
         if (llm.isEmpty()) return consultaMock(req);

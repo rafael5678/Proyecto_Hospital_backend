@@ -25,7 +25,9 @@ public class AiController {
     public ResponseEntity<AiStatusResponse> status() {
         return ResponseEntity.ok(new AiStatusResponse(
                 aiService.hasApiKey(),
-                aiService.versionIa() + "; requiere revisión profesional"
+                aiService.versionIa() + "; requiere revisión profesional",
+                aiService.gastoHaiku().get("llamadas"),
+                aiService.gastoHaiku().get("usdEstimado")
         ));
     }
 
@@ -96,7 +98,7 @@ public class AiController {
         return ResponseEntity.ok(aiService.prices(req));
     }
 
-    public record AiStatusResponse(boolean apiKeyActiva, String version) { }
+    public record AiStatusResponse(boolean apiKeyActiva, String version, String haikuLlamadas, String haikuUsd) { }
 
     public record AiWarmupResponse(boolean ok) { }
 }
