@@ -20,7 +20,7 @@ public class PatientService {
 
     public Patient findByEmail(String email) {
         return pacienteRepository.findByUsuario_Email(email)
-                .orElseThrow(() -> new RuntimeException("Patient no encontrado"));
+                .orElseThrow(() -> new RuntimeException("Paciente no encontrado"));
     }
 
     public PatientProfileDto loadProfile(String email) {

@@ -74,11 +74,11 @@ public class SkinImageClassifier {
                 for (int i = 0; i < coefNode.size(); i++) coef[i] = toArray(coefNode.get(i));
                 listo = !classes.isEmpty() && coef.length == classes.size();
             }
-            log.info("Clasificador de piel cargado: tipo={} clases={} acc_test={}",
-                    forest ? "bosque" : "lineal", classes.size(), accuracyTest);
+            log.info("Skin classifier loaded: type={} classes={} acc_test={}",
+                    forest ? "forest" : "linear", classes.size(), accuracyTest);
         } catch (Exception ex) {
             listo = false;
-            log.warn("Sin modelo de piel entrenado ({}). Se usará solo texto.", ex.getMessage());
+            log.warn("No trained skin model ({}). Text-only review will be used.", ex.getMessage());
         }
     }
 
@@ -117,7 +117,7 @@ public class SkinImageClassifier {
                     .modoDemo(false)
                     .build();
         } catch (Exception ex) {
-            log.warn("No se pudo clasificar la imagen de piel: {}", ex.getMessage());
+            log.warn("Could not classify the skin image: {}", ex.getMessage());
             return null;
         }
     }

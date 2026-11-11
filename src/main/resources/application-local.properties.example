@@ -1,29 +1,25 @@
-# ============================================================
-# Copia este archivo como: application-local.properties
-# NO lo subas a git — contiene credenciales (ya está en .gitignore)
-# ============================================================
+# Copy this file as application-local.properties
+# Do not commit it — it holds credentials (already in .gitignore)
 
-# ---------- OPCIÓN 1: Base de datos LOCAL con Docker ----------
-# Levántala con: docker compose up -d postgres
+# ---------- Option 1: local Postgres with Docker ----------
+# Start it with: docker compose up -d postgres
 spring.datasource.url=jdbc:postgresql://localhost:5432/medico_db
 spring.datasource.username=medico_user
-spring.datasource.password=Hospy2024!
+spring.datasource.password=CHANGE_ME
 
-# ---------- OPCIÓN 2: Base de datos REMOTA en Render ----------
-# Descomenta y usa la URL EXTERNA con sslmode=require
-# (para conectar desde tu PC / DBeaver / Postman)
-#spring.datasource.url=jdbc:postgresql://dpg-daq5eomgekts73blio0g-a.oregon-postgres.render.com:5432/NOMBRE_DB?sslmode=require
-#spring.datasource.username=medico_user
-#spring.datasource.password=TU_PASSWORD_DE_RENDER
+# ---------- Option 2: remote Postgres on Render ----------
+# Uncomment and use the EXTERNAL URL with sslmode=require
+#spring.datasource.url=jdbc:postgresql://HOST:5432/DB_NAME?sslmode=require
+#spring.datasource.username=CHANGE_ME
+#spring.datasource.password=CHANGE_ME
 
-# ---------- JWT y CORS ----------
-jwt.secret=TuClaveSecretaJWTMinimo32Caracteres1234567890
-app.cors.allowed-origins=http://localhost:4200,https://tu-app.vercel.app
+# ---------- JWT and CORS ----------
+jwt.secret=CHANGE_ME_USE_AT_LEAST_32_CHARACTERS
+app.cors.allowed-origins=http://localhost:4200
 
-# ---------- Notificaciones por correo (opcional) ----------
-# Configura un SMTP de pruebas; sin estos valores el sistema informa que no pudo enviar.
+# ---------- Optional email notices ----------
 # MAIL_HOST=smtp.example.com
 # MAIL_PORT=587
-# MAIL_USERNAME=usuario
-# MAIL_PASSWORD=contraseña-de-aplicación
-# MAIL_FROM=notificaciones@tu-dominio.com
+# MAIL_USERNAME=user
+# MAIL_PASSWORD=app-password
+# MAIL_FROM=notificaciones@example.com

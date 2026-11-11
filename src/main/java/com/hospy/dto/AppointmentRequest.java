@@ -15,8 +15,7 @@ public class AppointmentRequest {
     private String motivo;
     private String notas;
 
-    /* ====== Campos IA opcionales (todos nullables) ====== */
-    /* Triage NLP */
+    /* Optional AI fields (all nullable). */
     private String triageSeveridad;
     private Integer triageNivelEsi;
     private Integer triagePrioridad;

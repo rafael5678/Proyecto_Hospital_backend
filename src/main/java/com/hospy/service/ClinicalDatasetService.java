@@ -217,7 +217,7 @@ public class ClinicalDatasetService {
         try (InputStream in = new ClassPathResource(ruta).getInputStream()) {
             return mapper.readTree(in);
         } catch (Exception ex) {
-            log.warn("No se pudo leer {}: {}", ruta, ex.getMessage());
+            log.warn("Could not read {}: {}", ruta, ex.getMessage());
             return null;
         }
     }

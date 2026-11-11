@@ -25,7 +25,7 @@ public class SecretBox {
             byte[] raw = MessageDigest.getInstance("SHA-256").digest(secret.getBytes(StandardCharsets.UTF_8));
             this.key = new SecretKeySpec(raw, "AES");
         } catch (Exception ex) {
-            throw new IllegalStateException("No se pudo preparar el cifrado de claves", ex);
+            throw new IllegalStateException("Could not prepare password encryption", ex);
         }
     }
 
@@ -42,7 +42,7 @@ public class SecretBox {
             System.arraycopy(enc, 0, out, iv.length, enc.length);
             return Base64.getEncoder().encodeToString(out);
         } catch (Exception ex) {
-            throw new IllegalStateException("No se pudo cifrar la clave", ex);
+            throw new IllegalStateException("Could not encrypt the login secret", ex);
         }
     }
 

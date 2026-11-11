@@ -1,4 +1,4 @@
-# Blueprint Render — Sistema Hospy (backend Docker)
+# Render blueprint for the Hospy backend (Docker)
 # Docs: https://render.com/docs/blueprint-spec
 services:
   - type: web

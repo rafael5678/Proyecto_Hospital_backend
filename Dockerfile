@@ -18,7 +18,7 @@ USER hospy
 
 COPY --from=build /app/target/hospital-*.jar /app/app.jar
 
-# Render inyecta PORT; Spring lo lee en application.properties
+# Render injects PORT; Spring reads it from application.properties
 ENV PORT=8080
 EXPOSE 8080
 

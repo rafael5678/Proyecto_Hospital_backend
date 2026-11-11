@@ -1,0 +1,9 @@
+**/application-local.properties
+.env
+.git
+.idea
+*.iml
+target
+spark/.venv
+spark/__pycache__
+src/main/resources/datasets/skin-features.npz

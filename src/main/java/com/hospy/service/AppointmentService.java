@@ -219,14 +219,14 @@ public class AppointmentService {
 
     public List<AppointmentResponse> patientHistory(String email) {
         Patient paciente = pacienteRepository.findByUsuario_Email(email)
-                .orElseThrow(() -> new RuntimeException("Patient no encontrado"));
+                .orElseThrow(() -> new RuntimeException("Paciente no encontrado"));
         return citaRepository.findByPacienteOrderByFechaHoraDesc(paciente)
                 .stream().map(AppointmentMapper::toDto).toList();
     }
 
     public List<AppointmentResponse> proximasCitas(String email) {
         Patient paciente = pacienteRepository.findByUsuario_Email(email)
-                .orElseThrow(() -> new RuntimeException("Patient no encontrado"));
+                .orElseThrow(() -> new RuntimeException("Paciente no encontrado"));
         return citaRepository.findByPacienteOrderByFechaHoraDesc(paciente).stream()
                 .filter(c -> c.getFechaHora().isAfter(ColombiaTime.now()))
                 .filter(c -> c.getEstado() == AppointmentStatus.PENDIENTE || c.getEstado() == AppointmentStatus.ACEPTADA)

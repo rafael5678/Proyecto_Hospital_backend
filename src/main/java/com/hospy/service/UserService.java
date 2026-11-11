@@ -181,12 +181,12 @@ public class UserService {
 
     public User findStored(Long id) {
         return usuarioRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User no encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
     }
 
     public User findByEmail(String email) {
         return usuarioRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User no encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
     }
 
     public List<UserDto> listDoctors() {

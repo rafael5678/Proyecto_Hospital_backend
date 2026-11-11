@@ -146,7 +146,7 @@ public class NotificationInboxService {
 
     private User usuario(String email) {
         return usuarioRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User no encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
     }
 
     private NotificationResponse toDto(Notification n) {

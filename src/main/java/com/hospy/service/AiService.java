@@ -246,13 +246,13 @@ public class AiService {
             HttpResponse<String> response = httpClient.send(request,
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() != 200) {
-                log.warn("Transcripcion de audio fallo status={}", response.statusCode());
-                return new AiTranscriptionResponse("", true, "Whisper no pudo transcribir el audio. Revisa la conexión y vuelve a intentar.");
+                log.warn("Audio transcription failed status={}", response.statusCode());
+                return new AiTranscriptionResponse("", true, "No se pudo transcribir el audio. Revisa la conexión y vuelve a intentar.");
             }
             String texto = mapper.readTree(response.body()).path("text").asText("");
-            return new AiTranscriptionResponse(texto, false, "Transcripción Whisper lista para revisión médica.");
+            return new AiTranscriptionResponse(texto, false, "Transcripción lista para revisión médica.");
         } catch (Exception ex) {
-            log.warn("Error en transcripcion de audio: {}", ex.getMessage());
+            log.warn("Audio transcription error: {}", ex.getMessage());
             return new AiTranscriptionResponse("", true, "No se pudo completar la transcripción. Revisa la conexión y vuelve a intentar.");
         }
     }
@@ -351,7 +351,7 @@ public class AiService {
             }
             return texto.isEmpty() ? Optional.empty() : Optional.of(texto.toString().trim());
         } catch (Exception ex) {
-            log.warn("Excepción Anthropic {}: {}", modelo, ex.getMessage());
+            log.warn("Anthropic exception {}: {}", modelo, ex.getMessage());
             return Optional.empty();
         }
     }
@@ -378,14 +378,14 @@ public class AiService {
 
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (resp.statusCode() != 200) {
-                log.warn("Llamada a OpenAI fallo status={}", resp.statusCode());
+                log.warn("OpenAI call failed status={}", resp.statusCode());
                 return Optional.empty();
             }
             JsonNode root = mapper.readTree(resp.body());
             String content = root.path("choices").get(0).path("message").path("content").asText();
             return Optional.ofNullable(cleanJson(content));
         } catch (Exception ex) {
-            log.warn("Excepcion en llamada OpenAI: {}", ex.getMessage());
+            log.warn("OpenAI call exception: {}", ex.getMessage());
             return Optional.empty();
         }
     }
@@ -576,11 +576,11 @@ public class AiService {
             if (texto.isEmpty()) {
                 String motivo = mapper.readTree(resp.body()).path("candidates").path(0).path("finishReason").asText("");
                 String bloqueo = mapper.readTree(resp.body()).path("promptFeedback").path("blockReason").asText("");
-                log.warn("Gemini {} respondió 200 sin texto útil finishReason={} blockReason={}", modelo, motivo, bloqueo);
+                log.warn("Gemini {} returned 200 without usable text finishReason={} blockReason={}", modelo, motivo, bloqueo);
             }
             return texto;
         } catch (Exception ex) {
-            log.warn("Excepción Gemini {}: {}", modelo, ex.getMessage());
+            log.warn("Gemini exception {}: {}", modelo, ex.getMessage());
             String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
             if (ex instanceof java.net.http.HttpTimeoutException || msg.contains("timed out") || msg.contains("timeout")) {
                 modeloAgotadoHasta.put(modelo, System.currentTimeMillis() + 90_000L);
@@ -1023,7 +1023,7 @@ public class AiService {
         try {
             return Optional.of(mapper.readValue(extractJson(json), AiAdminOperationResponse.class));
         } catch (Exception ex) {
-            log.warn("No se pudo leer el alta de Gemini: {}", ex.getMessage());
+            log.warn("Could not parse Gemini consult JSON: {}", ex.getMessage());
             return Optional.empty();
         }
     }
@@ -1544,7 +1544,7 @@ public class AiService {
             List<String> nombres = specialtyService.names();
             if (nombres != null && !nombres.isEmpty()) return nombres;
         } catch (Exception ex) {
-            log.warn("No se pudo leer el catálogo de especializaciones: {}", ex.getMessage());
+            log.warn("Could not read the specialty catalog: {}", ex.getMessage());
         }
         return SpecialtyService.DEFAULTS;
     }

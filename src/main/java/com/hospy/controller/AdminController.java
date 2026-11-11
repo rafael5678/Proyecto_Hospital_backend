@@ -47,7 +47,7 @@ public class AdminController {
     @DeleteMapping("/users/{id}")
     public ResponseEntity<ApiMessage> deactivateUser(@PathVariable Long id) {
         usuarioService.remove(id);
-        return ResponseEntity.ok(new ApiMessage("User desactivado"));
+        return ResponseEntity.ok(new ApiMessage("Usuario desactivado"));
     }
 
     @PatchMapping("/users/{id}/estado")

@@ -77,7 +77,7 @@ public class ScheduleService {
 
     public ScheduleResponse update(Long id, String emailMedico, ScheduleRequest req) {
         Schedule horario = horarioRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Schedule no encontrado"));
+                .orElseThrow(() -> new RuntimeException("Horario no encontrado"));
         if (!horario.getMedico().getUsuario().getEmail().equals(emailMedico)) {
             throw new RuntimeException("No autorizado");
         }
@@ -90,7 +90,7 @@ public class ScheduleService {
 
     public void remove(Long id, String emailMedico) {
         Schedule horario = horarioRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Schedule no encontrado"));
+                .orElseThrow(() -> new RuntimeException("Horario no encontrado"));
         if (!horario.getMedico().getUsuario().getEmail().equals(emailMedico)) {
             throw new RuntimeException("No autorizado");
         }

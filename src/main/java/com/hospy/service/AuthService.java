@@ -58,7 +58,7 @@ public class AuthService {
             throw new RuntimeException("Credenciales inválidas");
         }
         if (!Boolean.TRUE.equals(usuario.getActivo())) {
-            throw new RuntimeException("User desactivado");
+            throw new RuntimeException("Usuario desactivado");
         }
         if (req.getRol() != null && !req.getRol().isBlank()
                 && !usuario.getRol().name().equalsIgnoreCase(req.getRol())) {

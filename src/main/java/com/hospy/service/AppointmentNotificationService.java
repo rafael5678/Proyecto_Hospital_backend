@@ -174,7 +174,7 @@ public class AppointmentNotificationService {
             sender.send(mensaje);
             return true;
         } catch (RuntimeException ex) {
-            log.warn("No se pudo enviar notificacion de cita: {}", ex.getMessage());
+            log.warn("Could not send the appointment email: {}", ex.getMessage());
             return false;
         }
     }
